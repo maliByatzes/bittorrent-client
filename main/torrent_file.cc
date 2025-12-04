@@ -1,9 +1,17 @@
 #include "torrent_file.h"
+#include <cstddef>
 #include <fstream>
 #include <ios>
 #include <iostream>
 
 void TorrentFile::parse() {
+  readFile();
+
+  std::cout << "File contents:\n";
+  std::cout << contents_;
+}
+
+void TorrentFile::readFile() {
   std::fstream file(file_name_, std::ios::in);
 
   if (!file.good()) {
@@ -19,7 +27,4 @@ void TorrentFile::parse() {
 
   file.read(contents_.data(), file_len);
   file.close();
-
-  std::cout << "File contents:\n";
-  std::cout << contents_;
 }
