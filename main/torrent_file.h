@@ -5,14 +5,14 @@
 
 class TorrentFile {
 private:
-  std::string file_name_;
-  std::string contents_;
+  std::string m_file_name;
+  std::string m_contents;
 
   void readFile();
 
 public:
-  TorrentFile(const std::string &file_name)
-      : file_name_(std::move(file_name)) {}
+  TorrentFile(const std::string file_name)
+      : m_file_name(std::move(file_name)) {}
 
   void parse();
 };

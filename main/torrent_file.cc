@@ -1,18 +1,21 @@
 #include "torrent_file.h"
+#include "bdecoder.h"
 #include <cstddef>
 #include <fstream>
 #include <ios>
 #include <iostream>
+#include <string>
 
 void TorrentFile::parse() {
   readFile();
-
-  std::cout << "File contents:\n";
-  std::cout << contents_;
+  BNode node_res = bdecode(m_contents);
+  std::cout << "Contents: ";
+  node_res.print(std::cout);
+  std::cout << "\n\n";
 }
 
 void TorrentFile::readFile() {
-  std::fstream file(file_name_, std::ios::in);
+  std::fstream file(m_file_name, std::ios::in);
 
   if (!file.good()) {
     throw "No such file exists in this universe.";
@@ -23,8 +26,8 @@ void TorrentFile::readFile() {
   auto file_len = file.tellg();
   file.seekg(0, std::ios::beg);
 
-  contents_.resize(static_cast<size_t>(file_len));
+  m_contents.resize(static_cast<size_t>(file_len));
 
-  file.read(contents_.data(), file_len);
+  file.read(m_contents.data(), file_len);
   file.close();
 }
