@@ -3,8 +3,8 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
   name = "bit-client-lib",
-  srcs = ["torrent_file.cc", "bdecoder.cc"],
-  hdrs = ["torrent_file.h", "bdecoder.h"],
+  srcs = ["torrent_file.cc", "bdecoder.cc", "utils.cc"],
+  hdrs = ["torrent_file.h", "bdecoder.h", "utils.h"],
 )
 
 cc_binary(

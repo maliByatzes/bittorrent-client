@@ -12,6 +12,7 @@ void TorrentFile::parse() {
   readFile();
   readFileBytes();
   BNode node_res = bdecode(m_contents);
+  node_res.print(std::cout);
   std::string announce = node_res["announce"].asString();
   auto info = node_res["info"];
   auto name = info["name"].asString();
