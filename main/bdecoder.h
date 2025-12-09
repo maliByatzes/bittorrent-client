@@ -7,6 +7,8 @@
 #include <variant>
 #include <vector>
 
+// TODO: Handle edge cases for bdecoding
+
 class BNode;
 
 using BNodeValue = std::variant<long long, std::string, std::vector<BNode>,
