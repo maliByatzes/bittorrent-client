@@ -10,7 +10,7 @@
 
 void TorrentFile::parse() {
   readFile();
-  readFileBytes();
+  // readFileBytes();
   BNode node_res = bdecode(m_contents);
   node_res.print(std::cout);
   std::string announce = node_res["announce"].asString();
@@ -26,11 +26,8 @@ void TorrentFile::parse() {
   std::cout << "  length= " << length << "\n";
   std::cout << "  piece length= " << piece_length << "\n";
 
-  std::cout << "Data in bytes:\n";
-  for (const auto &byte : m_contents_bytes) {
-    std::cout << unsigned(byte) << "  ";
-  }
-  std::cout << "\n";
+  auto orig_info = info.encode();
+  std::cout << "bencode info= " << orig_info << "\n";
 }
 
 void TorrentFile::readFile() {
