@@ -49,6 +49,9 @@ public:
   const BNode &operator[](const std::string &key) const;
   const BNode &operator[](size_t index) const;
 
+  std::string encode() const;
+  void encodeToStream(std::ostream &os) const;
+
   void print(std::ostream &os, int indent = 0) const;
 };
 
@@ -74,3 +77,5 @@ public:
 
 BNode bdecode(const std::string &data);
 BNode bdecode(std::istream &input);
+
+std::string bencode(const BNode &node);

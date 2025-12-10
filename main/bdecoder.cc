@@ -1,5 +1,7 @@
 #include "bdecoder.h"
+#include <ostream>
 #include <regex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -43,6 +45,40 @@ const BNode &BNode::operator[](size_t index) const {
     throw std::runtime_error("Index out of bounds");
   }
   return list[index];
+}
+
+std::string BNode::encode() const {
+  std::ostringstream oss;
+  encodeToStream(oss);
+  return oss.str();
+}
+
+void BNode::encodeToStream(std::ostream &os) const {
+  switch (m_type) {
+  case Type::Integer:
+    os << 'e' << asInteger() << 'e';
+    break;
+  case Type::String: {
+    const std::string &str = asString();
+    os << str.length() << ':' << str;
+    break;
+  }
+  case Type::List:
+    os << "l";
+    for (const auto &item : asList()) {
+      item.encodeToStream(os);
+    }
+    os << 'e';
+    break;
+  case Type::Dictionary:
+    os << 'd';
+    for (const auto &[key, val] : asDict()) {
+      os << key.length() << ':' << key;
+      val.encodeToStream(os);
+    }
+    os << 'e';
+    break;
+  }
 }
 
 void BNode::print(std::ostream &os, int indent) const {
@@ -231,3 +267,5 @@ BNode bdecode(std::istream &input) {
   decoder.validate();
   return result;
 }
+
+std::string bencode(const BNode &node) { return node.encode(); }
