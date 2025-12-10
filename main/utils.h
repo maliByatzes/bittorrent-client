@@ -5,7 +5,7 @@
 #include <vector>
 
 uint32_t leftRotate(uint32_t value, uint32_t shift);
-void sha1Preprocess(std::vector<uint8_t> &data);
+std::vector<uint8_t> sha1Preprocess(std::vector<uint8_t> data);
 std::string sha1(std::string &data);
 std::string sha1(std::vector<uint8_t> &data);
 

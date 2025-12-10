@@ -10,25 +10,21 @@ uint32_t leftRotate(uint32_t value, uint32_t shift) {
   return (value << shift) | (value >> (32 - shift));
 }
 
-void sha1Preprocess(std::vector<uint8_t> &data) {
-  uint64_t ml = data.size() * 8;
+std::vector<uint8_t> sha1Preprocess(std::vector<uint8_t> data) {
+  uint64_t orig_len = data.size() * 8;
+  std::cerr << "original length= " << orig_len << "\n";
 
   data.push_back(0x80);
 
-  size_t curr_len = data.size();
-  size_t target_len = ((curr_len + 8) / 64) * 64;
-
-  if (curr_len % 64 > 56) {
-    target_len += 64;
-  }
-
-  while (data.size() < target_len - 8) {
+  while (data.size() % 64 != 56) {
     data.push_back(0x00);
   }
 
   for (int i = 7; i >= 0; i--) {
-    data.push_back((ml >> (i * 8)) & 0xFFU);
+    data.push_back((orig_len >> (i * 8)) & 0xFFU);
   }
+
+  return data;
 }
 
 std::string sha1(std::string &data) {
@@ -43,19 +39,19 @@ std::string sha1(std::vector<uint8_t> &data) {
   uint32_t h3 = 0x10325476;
   uint32_t h4 = 0xC3D2E1F0;
 
-  sha1Preprocess(data);
+  auto padded_data = sha1Preprocess(data);
 
   // Processing
   const size_t chunk_size = 64;
-  for (size_t chunk_start = 0; chunk_start < data.size();
+  for (size_t chunk_start = 0; chunk_start < padded_data.size();
        chunk_start += chunk_size) {
     uint32_t w[80];
 
     for (int i = 0; i < 16; i++) {
-      w[i] = (data[chunk_start + i * 4] << 24U) |
-             (data[chunk_start + i * 4 + 1] << 16U) |
-             (data[chunk_start + i * 4 + 2] << 8U) |
-             (data[chunk_start + i * 4 + 3]);
+      w[i] = (padded_data[chunk_start + i * 4] << 24U) |
+             (padded_data[chunk_start + i * 4 + 1] << 16U) |
+             (padded_data[chunk_start + i * 4 + 2] << 8U) |
+             (padded_data[chunk_start + i * 4 + 3]);
     }
 
     for (int i = 16; i < 80; i++) {
