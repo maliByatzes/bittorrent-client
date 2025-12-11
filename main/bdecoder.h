@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <istream>
 #include <map>
 #include <ostream>
@@ -51,6 +52,7 @@ public:
 
   std::string encode() const;
   void encodeToStream(std::ostream &os) const;
+  std::vector<uint8_t> encodeToBytes() const;
 
   void print(std::ostream &os, int indent = 0) const;
 };

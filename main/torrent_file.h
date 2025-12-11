@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bdecoder.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -52,22 +53,31 @@ struct PieceFileSegment {
   uint32_t segment_length;
 };
 
-struct PieceFileMpping {
+struct PieceFileMapping {
   std::vector<std::vector<PieceFileSegment>> piece_to_file_map;
 };
 
 class TorrentFile {
 private:
   std::string m_file_name;
-  std::string m_contents;
-  std::vector<uint8_t> m_contents_bytes;
+  std::vector<uint8_t> m_file_bytes;
+
+  TorrentMetadata m_metadata;
+  PieceInformation m_piece_info;
+  PieceFileMapping m_file_mapping;
 
   void readFile();
-  void readFileBytes();
+  void extractMetadata(const BNode &root);
+  void extractPieceInfo(const BNode &info);
+  void buildFileMapping();
 
 public:
   TorrentFile(const std::string file_name)
       : m_file_name(std::move(file_name)) {}
 
   void parse();
+
+  const TorrentMetadata &getMetadata() const { return m_metadata; }
+  const PieceInformation &getPieceInfo() const { return m_piece_info; }
+  const PieceFileMapping &getFileMapping() const { return m_file_mapping; }
 };

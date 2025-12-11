@@ -1,4 +1,5 @@
 #include "bdecoder.h"
+#include <cstdint>
 #include <ostream>
 #include <regex>
 #include <sstream>
@@ -56,7 +57,7 @@ std::string BNode::encode() const {
 void BNode::encodeToStream(std::ostream &os) const {
   switch (m_type) {
   case Type::Integer:
-    os << 'e' << asInteger() << 'e';
+    os << 'i' << asInteger() << 'e';
     break;
   case Type::String: {
     const std::string &str = asString();
@@ -79,6 +80,11 @@ void BNode::encodeToStream(std::ostream &os) const {
     os << 'e';
     break;
   }
+}
+
+std::vector<uint8_t> BNode::encodeToBytes() const {
+  std::string encoded = encode();
+  return std::vector<uint8_t>(encoded.begin(), encoded.end());
 }
 
 void BNode::print(std::ostream &os, int indent) const {
