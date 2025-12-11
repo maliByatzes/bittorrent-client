@@ -169,7 +169,7 @@ void TorrentFile::buildFileMapping() {
         segment.file_index = file_idx;
 
         uint64_t overlap_start = std::max(piece_start, file_start_byte);
-        uint64_t overlap_end = std::max(piece_end, file_end_byte);
+        uint64_t overlap_end = std::min(piece_end, file_end_byte);
 
         segment.file_offset = overlap_start - file_start_byte;
         segment.segment_length =
