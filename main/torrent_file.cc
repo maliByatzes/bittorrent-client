@@ -1,6 +1,8 @@
 #include "torrent_file.h"
 #include "bdecoder.h"
+#include "utils.h"
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <ios>
@@ -10,24 +12,16 @@
 
 void TorrentFile::parse() {
   readFile();
-  // readFileBytes();
+  readFileBytes();
   BNode node_res = bdecode(m_contents);
   node_res.print(std::cout);
-  std::string announce = node_res["announce"].asString();
+
   auto info = node_res["info"];
-  auto name = info["name"].asString();
-  auto length = info["length"].asInteger();
-  auto piece_length = info["piece length"].asInteger();
-  auto pieces = info["pieces"].asString();
-
-  std::cout << "announce= " << announce << "\n\n";
-  std::cout << "info=\n";
-  std::cout << "  name= " << name << "\n";
-  std::cout << "  length= " << length << "\n";
-  std::cout << "  piece length= " << piece_length << "\n";
-
   auto orig_info = info.encode();
-  std::cout << "bencode info= " << orig_info << "\n";
+  std::vector<uint8_t> orig_info_bytes(orig_info.begin(), orig_info.end());
+
+  std::string info_hash = sha1(orig_info_bytes);
+  std::cout << "Info hash= " << info_hash << "\n";
 }
 
 void TorrentFile::readFile() {
