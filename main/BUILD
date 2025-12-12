@@ -2,29 +2,51 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
-  name = "bit-client-lib",
-  srcs = [
-    "torrent_file.cc",
-    "bdecoder.cc",
-    "utils.cc",
-    "torrent_test.cc",
-    "http_client.cc",
-    "tracker.cc"
+  name = "utils",
+  srcs = ["utils.cc"],
+  hdrs = ["utils.h"],
+)
+
+cc_library(
+  name = "bdecoder",
+  srcs = ["bdecoder.cc"],
+  hdrs = ["bdecoder.h"],
+)
+
+cc_library(
+  name = "http_client",
+  srcs = ["http_client.cc"],
+  hdrs = ["http_client.h"],
+)
+
+cc_library(
+  name = "torrent_file",
+  srcs = ["torrent_file.cc"],
+  hdrs = ["torrent_file.h"],
+  deps = [
+    ":bdecoder",
+    ":utils",
   ],
-  hdrs = [
-    "torrent_file.h",
-    "bdecoder.h",
-    "utils.h",
-    "torrent_test.h",
-    "http_client.h",
-    "tracker.h"
+)
+
+cc_library(
+  name = "tracker",
+  srcs = ["tracker.cc"],
+  hdrs = ["tracker.h"],
+  deps = [
+    ":bdecoder",
+    ":http_client",
+    ":torrent_file",
+    ":utils",
   ],
 )
 
 cc_binary(
-  name = "bit-client",
+  name = "bittorrent_client",
   srcs = ["main.cc"],
   deps = [
-    ":bit-client-lib",
+    ":torrent_file",
+    ":tracker",
+    ":utils"
   ],
 )

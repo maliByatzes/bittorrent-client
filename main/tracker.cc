@@ -26,7 +26,7 @@ void Tracker::updateStats(uint64_t uploaded, uint64_t downloaded,
   m_left = left;
 }
 
-std::string urlEncode(const uint8_t *data, size_t length) {
+std::string Tracker::urlEncode(const uint8_t *data, size_t length) {
   std::ostringstream encoded;
   encoded << std::hex << std::uppercase << std::setfill('0');
 
