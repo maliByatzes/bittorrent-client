@@ -63,9 +63,41 @@ std::string Tracker::buildAnnounceUrl(const std::string &event) const {
   return url.str();
 }
 
+std::vector<PeerInfo>
+Tracker::parseCompactPeers(const std::string &peers_data) const {
+  std::vector<PeerInfo> peers;
+
+  if (peers_data.length() % 6 != 0) {
+    throw std::runtime_error("Invalid compact peers data length");
+  }
+
+  size_t num_peers = peers_data.length() / 6;
+
+  for (size_t i = 0; i < num_peers; i++) {
+    size_t offset = i * 6;
+
+    uint8_t ip_bytes[4];
+    for (int j = 0; j < 4; j++) {
+      ip_bytes[j] = static_cast<uint8_t>(peers_data[offset + j]);
+    }
+
+    std::ostringstream ip_stream;
+    ip_stream << static_cast<int>(ip_bytes[0]) << '.'
+              << static_cast<int>(ip_bytes[1]) << '.'
+              << static_cast<int>(ip_bytes[2]) << '.'
+              << static_cast<int>(ip_bytes[3]);
+
+    uint16_t port = (static_cast<uint8_t>(peers_data[offset + 4]) << 8) |
+                    static_cast<uint8_t>(peers_data[offset + 5]);
+
+    peers.emplace_back(ip_stream.str(), port);
+  }
+
+  return peers;
+}
+
 // TrackerResponse announce(const std::string &event = "");
 // int getInterval() const { return m_last_interval; }
 
 // TrackerResponse parseTrackerResponse(const std::string &response_body) const;
-// std::vector<PeerInfo> parseCompactPeers(const std::string &peers_data) const;
 // std::vector<PeerInfo> parseDictionaryPeers(const BNode &peers_list) const;
