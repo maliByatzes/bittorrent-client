@@ -15,3 +15,5 @@ std::string bytesToURLEncoded(const std::array<uint8_t, 20> &bytes);
 std::array<uint8_t, 20> sha1ToBytes(std::vector<uint8_t> &data);
 
 void printHex(const std::vector<uint8_t> &data);
+
+std::string generatePeerId();

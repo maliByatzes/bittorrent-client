@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <ios>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <vector>
 
@@ -220,4 +221,22 @@ void printHex(const std::vector<uint8_t> &data) {
   }
   if (data.size() % 16 != 0)
     std::cout << "\n";
+}
+
+std::string generatePeerId() {
+  std::string peer_id = "-BT0001-";
+
+  static const char alphanum[] = "0123456789"
+                                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                 "abcdefghijklmnopqrstuvwxyz";
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, sizeof(alphanum) - 2);
+
+  for (int i = 0; i < 12; i++) {
+    peer_id += alphanum[dis(gen)];
+  }
+
+  return peer_id;
 }
