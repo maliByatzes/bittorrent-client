@@ -1,6 +1,7 @@
 #include "tracker.h"
 #include "bdecoder.h"
 #include "http_client.h"
+#include <cstdint>
 #include <iomanip>
 #include <ios>
 #include <sstream>
@@ -96,8 +97,44 @@ Tracker::parseCompactPeers(const std::string &peers_data) const {
   return peers;
 }
 
+std::vector<PeerInfo>
+Tracker::parseDictionaryPeers(const BNode &peers_list) const {
+  std::vector<PeerInfo> peers;
+
+  if (!peers_list.isList()) {
+    throw std::runtime_error("Expected peers to be a list");
+  }
+
+  for (const auto &peer_node : peers_list.asList()) {
+    if (!peer_node.isDictionary()) {
+      continue;
+    }
+
+    try {
+      std::string ip = peer_node["ip"].asString();
+      int64_t port_int = peer_node["port"].asInteger();
+
+      if (port_int < 0 || port_int > 65535) {
+        continue;
+      }
+
+      uint16_t port = static_cast<uint16_t>(port_int);
+
+      std::string peer_id;
+      if (peer_node.isDictionary() && peer_node.asDict().count("peer id")) {
+        peer_id = peer_node["peer id"].asString();
+      }
+
+      peers.emplace_back(ip, port, peer_id);
+    } catch (const std::exception &e) {
+      continue;
+    }
+  }
+
+  return peers;
+}
+
 // TrackerResponse announce(const std::string &event = "");
 // int getInterval() const { return m_last_interval; }
 
 // TrackerResponse parseTrackerResponse(const std::string &response_body) const;
-// std::vector<PeerInfo> parseDictionaryPeers(const BNode &peers_list) const;
