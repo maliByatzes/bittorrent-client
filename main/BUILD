@@ -8,14 +8,16 @@ cc_library(
     "bdecoder.cc",
     "utils.cc",
     "torrent_test.cc",
-    "http_client.cc"
+    "http_client.cc",
+    "tracker.cc"
   ],
   hdrs = [
     "torrent_file.h",
     "bdecoder.h",
     "utils.h",
     "torrent_test.h",
-    "http_client.h"
+    "http_client.h",
+    "tracker.h"
   ],
 )
 
