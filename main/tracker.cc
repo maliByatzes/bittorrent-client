@@ -6,6 +6,7 @@
 #include <ios>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 
 Tracker::Tracker(const std::string &announce_url,
                  const std::array<uint8_t, 20> &info_hash,
@@ -134,7 +135,89 @@ Tracker::parseDictionaryPeers(const BNode &peers_list) const {
   return peers;
 }
 
-// TrackerResponse announce(const std::string &event = "");
-// int getInterval() const { return m_last_interval; }
+TrackerResponse
+Tracker::parseTrackerResponse(const std::string &response_body) const {
+  TrackerResponse response;
 
-// TrackerResponse parseTrackerResponse(const std::string &response_body) const;
+  try {
+    BNode root = bdecode(response_body);
+
+    if (!root.isDictionary()) {
+      response.failure_reason = "Invalid tracker response format";
+      return response;
+    }
+
+    if (root.asDict().count("failure reason")) {
+      response.failure_reason = root["failure reason"].asString();
+      return response;
+    }
+
+    if (!root.asDict().count("interval")) {
+      response.failure_reason = "Missing interval in tracker response";
+      return response;
+    }
+    response.interval = static_cast<int>(root["interval"].asInteger());
+
+    if (root.asDict().count("complete")) {
+      response.complete = static_cast<int>(root["complete"].asInteger());
+    }
+
+    if (root.asDict().count("incomplete")) {
+      response.incomplete = static_cast<int>(root["incomplete"].asInteger());
+    }
+
+    if (!root.asDict().count("peers")) {
+      response.failure_reason = "Missing peers in tracker response";
+      return response;
+    }
+
+    const BNode &peers_node = root["peers"];
+
+    if (peers_node.isString()) {
+      response.peers = parseCompactPeers(peers_node.asString());
+    } else if (peers_node.isList()) {
+      response.peers = parseDictionaryPeers(peers_node);
+    } else {
+      response.failure_reason = "Invalid peers format";
+      return response;
+    }
+
+    response.success = true;
+    return response;
+  } catch (const std::exception &e) {
+    response.failure_reason =
+        std::string("Failed to parse tracker response: ") + e.what();
+    return response;
+  }
+}
+
+TrackerResponse Tracker::announce(const std::string &event) {
+  try {
+    std::string url = buildAnnounceUrl(event);
+
+    HttpResponse http_response = HttpClient::get(url, 30);
+
+    if (!http_response.isSuccess()) {
+      TrackerResponse response;
+      response.failure_reason =
+          "HTTP error: " + std::to_string(http_response.status_code) + " " +
+          http_response.status_message;
+      return response;
+    }
+
+    TrackerResponse response = parseTrackerResponse(http_response.body);
+
+    if (response.success) {
+      m_last_interval = response.interval;
+    }
+
+    return response;
+  } catch (const std::exception &e) {
+    TrackerResponse response;
+    response.failure_reason =
+        std::string("Tracker announce failed: ") + e.what();
+    return response;
+  }
+}
+
+// int getInterval() const { return m_last_interval; }
