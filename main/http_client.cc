@@ -1,10 +1,114 @@
 #include "http_client.h"
+#include <arpa/inet.h>
+#include <asm-generic/socket.h>
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <poll.h>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/poll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-// HttpResponse get(const std::string &url, int timeout_seconds = 10);
+HttpResponse HttpClient::get(const std::string &url, int timeout_seconds) {
+  std::string scheme, host, path;
+  uint16_t port;
+
+  if (!parseUrl(url, scheme, host, port, path)) {
+    throw std::runtime_error("Invalid URL format: " + url);
+  }
+
+  if (scheme != "http") {
+    throw std::runtime_error("Only HTTP is supported.");
+  }
+
+  struct hostent *he =
+      gethostbyname(host.c_str()); // `gethostbyname` is deprecated
+  if (he == nullptr) {
+    throw std::runtime_error("Failed to resolve hostname: " + host);
+  }
+
+  int sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (sock < 0) {
+    throw std::runtime_error("Failed to create socket");
+  }
+
+  int flags = fcntl(sock, F_GETFL, 0);
+  fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+  struct sockaddr_in server_addr;
+  std::memset(&server_addr, 0, sizeof(server_addr));
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(port);
+  std::memcpy(&server_addr.sin_addr.s_addr, he->h_addr, he->h_length);
+
+  int connect_result =
+      connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+  if (connect_result < 0 && errno != EINPROGRESS) {
+    close(sock);
+    throw std::runtime_error("Failed to connect to " + host);
+  }
+
+  struct pollfd pfd;
+  pfd.fd = sock;
+  pfd.events = POLLOUT;
+
+  int poll_result = poll(&pfd, 1, timeout_seconds * 1000);
+  if (poll_result <= 0) {
+    close(sock);
+    throw std::runtime_error("Connection timeout");
+  }
+
+  int sock_error = 0;
+  socklen_t len = sizeof(sock_error);
+  getsockopt(sock, SOL_SOCKET, SO_ERROR, &sock_error, &len);
+  if (sock_error != 0) {
+    close(sock);
+    throw std::runtime_error("Connection failed");
+  }
+
+  std::string request = buildGetRequest(host, path);
+  ssize_t sent = send(sock, request.c_str(), request.length(), 0);
+  if (sent < 0) {
+    close(sock);
+    throw std::runtime_error("Failed to send request");
+  }
+
+  std::string response_data;
+  char buffer[4096];
+
+  while (true) {
+    pfd.events = POLLIN;
+    poll_result = poll(&pfd, 1, timeout_seconds * 1000);
+
+    if (poll_result <= 0) {
+      break;
+    }
+
+    ssize_t received = recv(sock, buffer, sizeof(buffer), 0);
+    if (received <= 0) {
+      break;
+    }
+
+    response_data.append(buffer, received);
+  }
+
+  close(sock);
+
+  if (response_data.empty()) {
+    throw std::runtime_error("No response received from tracker");
+  }
+
+  return parseResponse(response_data);
+}
 
 bool HttpClient::parseUrl(const std::string &url, std::string &scheme,
                           std::string &host, uint16_t &port,
