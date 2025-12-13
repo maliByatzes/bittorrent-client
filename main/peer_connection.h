@@ -53,10 +53,51 @@ private:
   PeerState m_state;
   std::vector<bool> m_peer_pieces;
 
+  bool m_connected;
+  bool m_handshake_complete;
+
 public:
   PeerConnection(const std::string &ip, uint16_t port,
                  const std::array<uint8_t, 20> &info_hash,
                  const std::string &our_peer_id);
 
   ~PeerConnection();
+
+  bool connect(int timeout_seconds = 10);
+  void disconnect();
+  bool isConnected() const { return m_connected; }
+
+  bool performHandshake();
+  bool isHandshakeComplete() const { return m_handshake_complete; }
+
+  bool sendKeepAlive();
+  bool sendChoke();
+  bool sendUnchoke();
+  bool sendInterested();
+  bool sendNotInterested();
+  bool sendHave(uint32_t piece_index);
+  bool sendBitfield(const std::vector<bool> &pieces);
+  bool sendRequest(uint32_t piece_index, uint32_t block_offset,
+                   uint32_t block_length);
+  bool sendPiece(uint32_t piece_index, uint32_t block_offset,
+                 std::vector<uint8_t> &block_data);
+  bool sendCancel(uint32_t piece_index, uint32_t block_offset,
+                  uint32_t block_length);
+
+  bool receiveMessage(PeerMessage &message, int timeout_seconds = 30);
+
+  const PeerState &getState() const { return m_state; }
+  const std::vector<bool> &getPeerPieces() const { return m_peer_pieces; }
+  const std::string &getPeerId() const { return m_peer_id; }
+  std::string getIp() const { return m_ip; }
+  uint16_t getPort() const { return m_port; }
+
+private:
+  bool sendData(const uint8_t *data, size_t length);
+  bool receiveData(uint8_t *buffer, size_t length, int timeout_seconds);
+
+  std::vector<uint8_t> serializeMessage(const PeerMessage &message) const;
+
+  std::vector<uint8_t> buildHandshake() const;
+  bool parseHandshake(const uint8_t *data);
 };
