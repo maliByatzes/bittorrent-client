@@ -41,12 +41,22 @@ cc_library(
   ],
 )
 
+cc_library(
+  name = "peer_connection",
+  srcs = ["peer_connection.cc"],
+  hdrs = ["peer_connection.h"],
+  deps = [
+    ":torrent_file"
+  ],
+)
+
 cc_binary(
   name = "bittorrent_client",
   srcs = ["main.cc"],
   deps = [
     ":torrent_file",
     ":tracker",
-    ":utils"
+    ":utils",
+    ":peer_connection"
   ],
 )
