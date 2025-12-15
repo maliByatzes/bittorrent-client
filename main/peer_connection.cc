@@ -277,11 +277,85 @@ bool PeerConnection::receiveData(uint8_t *buffer, size_t length,
   return true;
 }
 
-// bool sendKeepAlive();
-// bool sendChoke();
-// bool sendUnchoke();
-// bool sendInterested();
-// bool sendNotInterested();
+std::vector<uint8_t>
+PeerConnection::serializeMessage(const PeerMessage &message) const {
+  std::vector<uint8_t> data;
+
+  if (message.type == MessageType::KEEP_ALIVE) {
+    data.push_back(0);
+    data.push_back(0);
+    data.push_back(0);
+    data.push_back(0);
+    return data;
+  }
+
+  uint32_t message_length = 1 + message.payload.size();
+
+  data.push_back((message_length >> 24U) & 0xFFU);
+  data.push_back((message_length >> 16U) & 0xFFU);
+  data.push_back((message_length >> 8U) & 0xFFU);
+  data.push_back(message_length & 0xFFU);
+
+  data.push_back(static_cast<uint8_t>(message.type));
+
+  data.insert(data.end(), message.payload.begin(), message.payload.end());
+
+  return data;
+}
+
+bool PeerConnection::sendKeepAlive() {
+  PeerMessage msg(MessageType::KEEP_ALIVE);
+  std::vector<uint8_t> data{serializeMessage(msg)};
+  return sendData(data.data(), data.size());
+}
+
+bool PeerConnection::sendChoke() {
+  PeerMessage msg(MessageType::CHOKE);
+  std::vector<uint8_t> data{serializeMessage(msg)};
+
+  if (sendData(data.data(), data.size())) {
+    m_state.am_choking = true;
+    return true;
+  }
+
+  return false;
+}
+
+bool PeerConnection::sendUnchoke() {
+  PeerMessage msg(MessageType::UNCHOKE);
+  std::vector<uint8_t> data{serializeMessage(msg)};
+
+  if (sendData(data.data(), data.size())) {
+    m_state.am_choking = false;
+    return true;
+  }
+
+  return false;
+}
+
+bool PeerConnection::sendInterested() {
+  PeerMessage msg(MessageType::INTERESTED);
+  std::vector<uint8_t> data{serializeMessage(msg)};
+
+  if (sendData(data.data(), data.size())) {
+    m_state.am_interested = true;
+    return true;
+  }
+
+  return false;
+}
+
+bool PeerConnection::sendNotInterested() {
+  PeerMessage msg(MessageType::NOT_INTERESTED);
+  auto data{serializeMessage(msg)};
+
+  if (sendData(data.data(), data.size())) {
+    m_state.am_interested = false;
+    return true;
+  }
+
+  return false;
+}
 // bool sendHave(uint32_t piece_index);
 // bool sendBitfield(const std::vector<bool> &pieces);
 // bool sendRequest(uint32_t piece_index, uint32_t block_offset,
@@ -292,5 +366,3 @@ bool PeerConnection::receiveData(uint8_t *buffer, size_t length,
 //                 uint32_t block_length);
 
 // bool receiveMessage(PeerMessage &message, int timeout_seconds = 30);
-
-// std::vector<uint8_t> serializeMessage(const PeerMessage &message) const;
