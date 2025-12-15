@@ -5,6 +5,7 @@
 #include <asm-generic/socket.h>
 #include <cctype>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
@@ -14,6 +15,7 @@
 #include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 PeerConnection::PeerConnection(const std::string &ip, uint16_t port,
@@ -196,7 +198,84 @@ bool PeerConnection::performHandshake() {
   return true;
 }
 
-// bool isHandshakeComplete() const { return m_handshake_complete; }
+bool PeerConnection::sendData(const uint8_t *data, size_t length) {
+  if (!m_connected || m_socket < 0) {
+    return false;
+  }
+
+  size_t total_sent = 0;
+  while (total_sent < length) {
+    ssize_t sent = send(m_socket, data + total_sent, length - total_sent, 0);
+
+    if (sent < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        struct pollfd pfd;
+        pfd.fd = m_socket;
+        pfd.events = POLLOUT;
+        poll(&pfd, 1, 1000);
+        continue;
+      }
+      std::cerr << "Send error: " << strerror(errno) << "\n";
+      return false;
+    }
+
+    if (sent == 0) {
+      std::cerr << "Connection closed by peer\n";
+      return false;
+    }
+
+    total_sent += sent;
+  }
+
+  return true;
+}
+
+bool PeerConnection::receiveData(uint8_t *buffer, size_t length,
+                                 int timeout_seconds) {
+  if (!m_connected || m_socket < 0) {
+    return false;
+  }
+
+  size_t total_received = 0;
+
+  while (total_received < length) {
+    struct pollfd pfd;
+    pfd.fd = m_socket;
+    pfd.events = POLLIN;
+
+    int poll_result = poll(&pfd, 1, timeout_seconds * 1000);
+
+    if (poll_result == 0) {
+      std::cerr << "Recieve timeout\n";
+      return false;
+    }
+
+    if (poll_result < 0) {
+      std::cerr << "Poll error: " << strerror(errno) << "\n";
+      return false;
+    }
+
+    ssize_t received =
+        recv(m_socket, buffer + total_received, length - total_received, 0);
+
+    if (received < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        continue;
+      }
+      std::cerr << "Receive error: " << strerror(errno) << "\n";
+      return false;
+    }
+
+    if (received == 0) {
+      std::cerr << "Connection closed by peer\n";
+      return false;
+    }
+
+    total_received += received;
+  }
+
+  return true;
+}
 
 // bool sendKeepAlive();
 // bool sendChoke();
@@ -213,8 +292,5 @@ bool PeerConnection::performHandshake() {
 //                 uint32_t block_length);
 
 // bool receiveMessage(PeerMessage &message, int timeout_seconds = 30);
-
-// bool sendData(const uint8_t *data, size_t length);
-// bool receiveData(uint8_t *buffer, size_t length, int timeout_seconds);
 
 // std::vector<uint8_t> serializeMessage(const PeerMessage &message) const;
