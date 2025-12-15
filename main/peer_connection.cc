@@ -1,12 +1,17 @@
 #include "peer_connection.h"
+#include <algorithm>
 #include <arpa/inet.h>
+#include <array>
 #include <asm-generic/socket.h>
+#include <cctype>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <netinet/in.h>
 #include <poll.h>
+#include <string>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -94,9 +99,103 @@ void PeerConnection::disconnect() {
   m_handshake_complete = false;
 }
 
-// bool isConnected() const { return m_connected; }
+std::vector<uint8_t> PeerConnection::buildHandshake() const {
+  std::vector<uint8_t> handshake;
 
-// bool performHandshake();
+  // protocol name length (1 byte) = 19
+  handshake.push_back(19);
+
+  // protocol name (19 bytes) = "BitTorrent protocol"
+  std::string protocol_name{"BitTorrent protocol"};
+  handshake.insert(handshake.end(), protocol_name.begin(), protocol_name.end());
+
+  // reserved bytes (8 bytes) = 0s
+  for (int i = 0; i < 8; i++) {
+    handshake.push_back(0);
+  }
+
+  // info hash (20 bytes)
+  handshake.insert(handshake.begin(), m_info_hash.begin(), m_info_hash.end());
+
+  // peer id (20 bytes)
+  handshake.insert(handshake.begin(), m_our_peer_id.begin(),
+                   m_our_peer_id.end());
+
+  return handshake;
+}
+
+bool PeerConnection::parseHandshake(const uint8_t *data) {
+  if (data[0] != 19) {
+    std::cerr << "Invalid handshake: wrong protocol name length\n";
+    return false;
+  }
+
+  std::string protocol(reinterpret_cast<const char *>(data + 1), 19);
+  if (protocol != "BitTorrent protocol") {
+    std::cerr << "Invalid handshake: wrong protocol name. Expected 'BitTorrent "
+                 "protocol', got '"
+              << protocol << "'\n";
+    return false;
+  }
+
+  std::array<uint8_t, 20> peer_info_hash;
+  std::memcpy(peer_info_hash.data(), data + 28, 20);
+
+  if (peer_info_hash != m_info_hash) {
+    std::cerr << "Invalid handshake: info hash mismatch.\n";
+    return false;
+  }
+
+  m_peer_id = std::string(reinterpret_cast<const char *>(data + 48), 20);
+
+  return true;
+}
+
+bool PeerConnection::performHandshake() {
+  if (!m_connected) {
+    std::cerr << "Cannot handshake: not connected.\n";
+    return false;
+  }
+
+  if (m_handshake_complete) {
+    return true;
+  }
+
+  std::vector<uint8_t> handshake{buildHandshake()};
+  if (!sendData(handshake.data(), handshake.size())) {
+    std::cerr << "Failed to send handshake\n";
+    return false;
+  }
+
+  std::cout << "  → Sent handshake\n";
+
+  uint8_t peer_handshake[68];
+  if (!receiveData(peer_handshake, 68, 10)) {
+    std::cerr << "Failed to recieve handshake\n";
+    return false;
+  }
+
+  std::cout << "  ← Received handshake\n";
+
+  if (!parseHandshake(peer_handshake)) {
+    return false;
+  }
+
+  m_handshake_complete = true;
+  std::cout << "  ✓ Handshake complete with peer ID: ";
+
+  for (int i = 0; i < std::min(20, (int)m_peer_id.length()); i++) {
+    if (std::isprint(m_peer_id[i])) {
+      std::cout << m_peer_id[i];
+    } else {
+      std::cout << '.';
+    }
+  }
+  std::cout << "\n";
+
+  return true;
+}
+
 // bool isHandshakeComplete() const { return m_handshake_complete; }
 
 // bool sendKeepAlive();
@@ -119,6 +218,3 @@ void PeerConnection::disconnect() {
 // bool receiveData(uint8_t *buffer, size_t length, int timeout_seconds);
 
 // std::vector<uint8_t> serializeMessage(const PeerMessage &message) const;
-
-// std::vector<uint8_t> buildHandshake() const;
-// bool parseHandshake(const uint8_t *data);
