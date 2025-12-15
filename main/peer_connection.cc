@@ -455,4 +455,91 @@ bool PeerConnection::sendCancel(uint32_t piece_index, uint32_t block_offset,
   return sendData(data.data(), data.size());
 }
 
-// bool receiveMessage(PeerMessage &message, int timeout_seconds = 30);
+bool PeerConnection::receiveMessage(PeerMessage &message, int timeout_seconds) {
+  if (!m_connected || !m_handshake_complete) {
+    return false;
+  }
+
+  uint8_t length_bytes[4];
+  if (!receiveData(length_bytes, 4, timeout_seconds)) {
+    return false;
+  }
+
+  uint32_t message_length = (static_cast<uint32_t>(length_bytes[0]) << 24U) |
+                            (static_cast<uint32_t>(length_bytes[1]) << 16U) |
+                            (static_cast<uint32_t>(length_bytes[2]) << 8U) |
+                            static_cast<uint32_t>(length_bytes[3]);
+
+  if (message_length == 0) {
+    message.type = MessageType::KEEP_ALIVE;
+    message.payload.clear();
+    return true;
+  }
+
+  uint8_t message_id;
+  if (!receiveData(&message_id, 1, timeout_seconds)) {
+    return false;
+  }
+
+  message.type = static_cast<MessageType>(message_id);
+
+  uint32_t payload_length = message_length - 1;
+
+  if (payload_length > 0) {
+    message.payload.resize(payload_length);
+    if (!receiveData(message.payload.data(), payload_length, timeout_seconds)) {
+      return false;
+    }
+  } else {
+    message.payload.clear();
+  }
+
+  switch (message.type) {
+  case MessageType::CHOKE:
+    m_state.peer_choking = true;
+    break;
+
+  case MessageType::UNCHOKE:
+    m_state.peer_choking = false;
+    break;
+
+  case MessageType::INTERESTED:
+    m_state.am_interested = true;
+    break;
+
+  case MessageType::NOT_INTERESTED:
+    m_state.am_interested = false;
+    break;
+
+  case MessageType::HAVE:
+    if (payload_length == 4) {
+      uint32_t piece_index =
+          (static_cast<uint32_t>(message.payload[0]) << 24U) |
+          (static_cast<uint32_t>(message.payload[1]) << 16U) |
+          (static_cast<uint32_t>(message.payload[2]) << 8U) |
+          static_cast<uint32_t>(message.payload[3]);
+
+      if (piece_index >= m_peer_pieces.size()) {
+        m_peer_pieces.resize(piece_index + 1, false);
+      }
+      m_peer_pieces[piece_index] = true;
+    }
+    break;
+
+  case MessageType::BIT_FIELD:
+    m_peer_pieces.clear();
+    for (size_t byte_idx = 0; byte_idx < message.payload.size(); byte_idx++) {
+      uint8_t byte = message.payload[byte_idx];
+      for (int bit_idx = 7; bit_idx >= 0; bit_idx--) {
+        bool has_piece = (byte & (1U << bit_idx)) != 0;
+        m_peer_pieces.push_back(has_piece);
+      }
+    }
+    break;
+
+  default:
+    break;
+  }
+
+  return true;
+}
