@@ -356,13 +356,103 @@ bool PeerConnection::sendNotInterested() {
 
   return false;
 }
-// bool sendHave(uint32_t piece_index);
-// bool sendBitfield(const std::vector<bool> &pieces);
-// bool sendRequest(uint32_t piece_index, uint32_t block_offset,
-//                   uint32_t block_length);
-// bool sendPiece(uint32_t piece_index, uint32_t block_offset,
-//                std::vector<uint8_t> &block_data);
-// bool sendCancel(uint32_t piece_index, uint32_t block_offset,
-//                 uint32_t block_length);
+
+bool PeerConnection::sendHave(uint32_t piece_index) {
+  std::vector<uint8_t> payload(4);
+  payload[0] = (piece_index >> 24U) & 0xFFU;
+  payload[1] = (piece_index >> 16U) & 0xFFU;
+  payload[2] = (piece_index >> 8U) & 0xFFU;
+  payload[3] = piece_index & 0xFFU;
+
+  PeerMessage msg(MessageType::HAVE, std::move(payload));
+  auto data{serializeMessage(msg)};
+  return sendData(data.data(), data.size());
+}
+
+bool PeerConnection::sendBitfield(const std::vector<bool> &pieces) {
+  size_t num_bytes = (pieces.size() + 7) / 8;
+  std::vector<uint8_t> payload(num_bytes, 0);
+
+  for (size_t i = 0; i < pieces.size(); i++) {
+    if (pieces[i]) {
+      size_t byte_index = i / 8;
+      size_t bit_index = 7 - (i % 8);
+      payload[byte_index] |= (1U << bit_index);
+    }
+  }
+
+  PeerMessage msg(MessageType::BIT_FIELD, std::move(payload));
+  auto data{serializeMessage(msg)};
+  return sendData(data.data(), data.size());
+}
+
+bool PeerConnection::sendRequest(uint32_t piece_index, uint32_t block_offset,
+                                 uint32_t block_length) {
+  std::vector<uint8_t> payload(12);
+
+  payload[0] = (piece_index >> 24U) & 0xFFU;
+  payload[1] = (piece_index >> 16U) & 0xFFU;
+  payload[2] = (piece_index >> 8U) & 0xFFU;
+  payload[3] = piece_index & 0xFFU;
+
+  payload[4] = (block_offset >> 24U) & 0xFFU;
+  payload[5] = (block_offset >> 16U) & 0xFFU;
+  payload[6] = (block_offset >> 8U) & 0xFFU;
+  payload[7] = block_offset & 0xFFU;
+
+  payload[8] = (block_length >> 24U) & 0xFFU;
+  payload[9] = (block_length >> 16U) & 0xFFU;
+  payload[10] = (block_length >> 8U) & 0xFFU;
+  payload[11] = block_length & 0xFFU;
+
+  PeerMessage msg(MessageType::REQUEST, std::move(payload));
+  auto data{serializeMessage(msg)};
+  return sendData(data.data(), data.size());
+}
+
+bool PeerConnection::sendPiece(uint32_t piece_index, uint32_t block_offset,
+                               std::vector<uint8_t> &block_data) {
+  std::vector<uint8_t> payload(8 + block_data.size());
+
+  payload[0] = (piece_index >> 24U) & 0xFFU;
+  payload[1] = (piece_index >> 16U) & 0xFFU;
+  payload[2] = (piece_index >> 8U) & 0xFFU;
+  payload[3] = piece_index & 0xFFU;
+
+  payload[4] = (block_offset >> 24U) & 0xFFU;
+  payload[5] = (block_offset >> 16U) & 0xFFU;
+  payload[6] = (block_offset >> 8U) & 0xFFU;
+  payload[7] = block_offset & 0xFFU;
+
+  std::memcpy(payload.data() + 8, block_data.data(), block_data.size());
+
+  PeerMessage msg(MessageType::PIECE, std::move(payload));
+  auto data{serializeMessage(msg)};
+  return sendData(data.data(), data.size());
+}
+
+bool PeerConnection::sendCancel(uint32_t piece_index, uint32_t block_offset,
+                                uint32_t block_length) {
+  std::vector<uint8_t> payload(12);
+
+  payload[0] = (piece_index >> 24U) & 0xFFU;
+  payload[1] = (piece_index >> 16U) & 0xFFU;
+  payload[2] = (piece_index >> 8U) & 0xFFU;
+  payload[3] = piece_index & 0xFFU;
+
+  payload[4] = (block_offset >> 24U) & 0xFFU;
+  payload[5] = (block_offset >> 16U) & 0xFFU;
+  payload[6] = (block_offset >> 8U) & 0xFFU;
+  payload[7] = block_offset & 0xFFU;
+
+  payload[8] = (block_length >> 24U) & 0xFFU;
+  payload[9] = (block_length >> 16U) & 0xFFU;
+  payload[10] = (block_length >> 8U) & 0xFFU;
+  payload[11] = block_length & 0xFFU;
+
+  PeerMessage msg(MessageType::CANCEL, std::move(payload));
+  auto data{serializeMessage(msg)};
+  return sendData(data.data(), data.size());
+}
 
 // bool receiveMessage(PeerMessage &message, int timeout_seconds = 30);
