@@ -92,6 +92,29 @@ double DownloadManager::getProgress() const {
   return (100.0 * m_downloaded_bytes) / m_metadata.total_size;
 }
 
+PeerConnection *DownloadManager::findAvailablePeer(uint32_t piece_index) {
+  // Use of a greedy method for sequential, return the first available suitable
+  // peer
+
+  for (auto *peer : m_peers) {
+    if (!peer->isConnected() || !peer->isHandshakeComplete()) {
+      continue;
+    }
+
+    const auto &state = peer->getState();
+    if (state.peer_choking) {
+      continue;
+    }
+
+    const auto &peer_pieces = peer->getPeerPieces();
+    if (piece_index < peer_pieces.size() && peer_pieces[piece_index]) {
+      return peer;
+    }
+  }
+
+  return nullptr;
+}
+
 // bool downloadSequential();
 // bool downloadPiece(uint32_t piece_index);
 // bool verifyPiece(uint32_t piece_index);
@@ -99,5 +122,4 @@ double DownloadManager::getProgress() const {
 
 // bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);
 // bool receivePieceData(PeerConnection *peer, uint32_t piece_index);
-// PeerConnection *findAvailablePeer(uint32_t piece_index);
 // void createDirectoryStructure();
