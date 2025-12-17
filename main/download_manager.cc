@@ -1,4 +1,5 @@
 #include "download_manager.h"
+#include "peer_connection.h"
 #include "utils.h"
 #include <cmath>
 #include <cstdint>
@@ -115,11 +116,130 @@ PeerConnection *DownloadManager::findAvailablePeer(uint32_t piece_index) {
   return nullptr;
 }
 
+bool DownloadManager::requestBlocksForPiece(PeerConnection *peer,
+                                            uint32_t piece_index) {
+  if (piece_index >= m_pieces.size()) {
+    return false;
+  }
+
+  PieceDownload &piece = m_pieces[piece_index];
+
+  std::cout << "  Requesting blocks for piece " << piece_index << " ("
+            << piece.blocks.size() << "blocks)\n";
+
+  for (auto &block : piece.blocks) {
+    if (!block.requested) {
+      if (!peer->sendRequest(piece_index, block.offset, block.length)) {
+        std::cerr << "    Failed to send request for block at offset "
+                  << block.offset << "\n";
+        return false;
+      }
+
+      block.requested = true;
+    }
+  }
+
+  std::cout << "  ✓ All block requests sent\n";
+  return true;
+}
+
+bool DownloadManager::receivePieceData(PeerConnection *peer,
+                                       uint32_t piece_index) {
+  if (piece_index >= m_pieces.size()) {
+    return false;
+  }
+
+  PieceDownload &piece = m_pieces[piece_index];
+
+  std::cout << "  Receiving piece data...\n";
+
+  while (!piece.isComplete()) {
+    PeerMessage msg(MessageType::KEEP_ALIVE);
+
+    if (!peer->receiveMessage(msg, 30)) {
+      std::cerr << "    Failed to receive message (timeout or error)\n";
+      return false;
+    }
+
+    switch (msg.type) {
+    case MessageType::PIECE: {
+      if (msg.payload.size() < 8) {
+        std::cerr << "   Invalid PIECE message (too short)\n";
+        continue;
+      }
+
+      uint32_t recv_piece_index =
+          (static_cast<uint32_t>(msg.payload[0]) << 24U) |
+          (static_cast<uint32_t>(msg.payload[1]) << 16U) |
+          (static_cast<uint32_t>(msg.payload[2]) << 8U) |
+          static_cast<uint32_t>(msg.payload[3]);
+
+      uint32_t block_offset = (static_cast<uint32_t>(msg.payload[4]) << 24U) |
+                              (static_cast<uint32_t>(msg.payload[5]) << 16U) |
+                              (static_cast<uint32_t>(msg.payload[6]) << 8U) |
+                              static_cast<uint32_t>(msg.payload[7]);
+
+      if (recv_piece_index != piece_index) {
+        std::cerr << "    Received wrong piece index: " << recv_piece_index
+                  << " (expected " << piece_index << ")\n";
+        continue;
+      }
+
+      Block *target_block = nullptr;
+      for (auto &block : piece.blocks) {
+        if (block.offset == block_offset) {
+          target_block = &block;
+          break;
+        }
+      }
+
+      if (!target_block) {
+        std::cerr << "    Received block with unknown offset: " << block_offset
+                  << "\n";
+        continue;
+      }
+
+      size_t data_length = msg.payload.size() - 8;
+      target_block->data.resize(data_length);
+      std::memcpy(target_block->data.data(), msg.payload.data() + 8,
+                  data_length);
+
+      target_block->received = true;
+      m_downloaded_bytes += data_length;
+
+      std::memcpy(piece.piece_data.data() + block_offset,
+                  target_block->data.data(), data_length);
+
+      std::cout << "    ✓ Block at offset " << block_offset << " ("
+                << data_length << " bytes) - " << piece.blocksReceived() << "/"
+                << piece.totalBlocks() << " blocks\n";
+
+      break;
+    }
+
+    case MessageType::CHOKE:
+      std::cerr << "   Peer choked us!\n";
+      return false;
+
+    case MessageType::KEEP_ALIVE:
+      break;
+
+    default:
+      std::cout << "    Received message type: " << static_cast<int>(msg.type)
+                << "\n";
+      break;
+    }
+  }
+
+  std::cout << "  ✓ Piece " << piece_index
+            << " complete (all blocks received)\n";
+  piece.state = PieceState::COMPLETE;
+  return true;
+}
+
 // bool downloadSequential();
 // bool downloadPiece(uint32_t piece_index);
 // bool verifyPiece(uint32_t piece_index);
 // bool writePieceToDisk(uint32_t piece_index);
 
-// bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);
-// bool receivePieceData(PeerConnection *peer, uint32_t piece_index);
 // void createDirectoryStructure();
