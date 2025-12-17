@@ -372,7 +372,75 @@ bool DownloadManager::writePieceToDisk(uint32_t piece_index) {
   return true;
 }
 
-// bool downloadSequential();
-// bool downloadPiece(uint32_t piece_index);
+void DownloadManager::createDirectoryStructure() {
+  if (m_metadata.isSingleFile()) {
+    return;
+  }
 
-// void createDirectoryStructure();
+  std::string base_path = m_download_dir + "/" + m_metadata.name;
+
+  mkdir(base_path.c_str(), 0755);
+
+  for (const auto &file : m_metadata.files) {
+    std::string dir_path = base_path;
+
+    for (size_t i = 0; i < file.path.size() - 1; i++) {
+      dir_path += "/" + file.path[i];
+      mkdir(dir_path.c_str(), 0755);
+    }
+  }
+}
+
+bool DownloadManager::downloadPiece(uint32_t piece_index) {
+  if (piece_index >= m_pieces.size()) {
+    std::cerr << "Invalid piece index: " << piece_index << "\n";
+    return false;
+  }
+
+  PieceDownload &piece = m_pieces[piece_index];
+
+  if (piece.state == PieceState::VERIFIED) {
+    std::cout << "Piece " << piece_index << " already downloaded\n";
+    return true;
+  }
+
+  std::cout << "\n[Piece " << piece_index << "/" << m_pieces.size() << "]\n";
+
+  PeerConnection *peer = findAvailablePeer(piece_index);
+  if (!peer) {
+    std::cerr << "  No available peer has this piece " << piece_index << "\n";
+    return false;
+  }
+
+  std::cout << "  Using peer: " << peer->getIp() << ":" << peer->getPort()
+            << "\n";
+
+  piece.state = PieceState::IN_PROGRESS;
+
+  if (!requestBlocksForPiece(peer, piece_index)) {
+    std::cerr << "  Failed to request blocks\n";
+    piece.state = PieceState::NOT_STARTED;
+    return false;
+  }
+
+  if (!receivePieceData(peer, piece_index)) {
+    std::cerr << "  Failed to receive piece data\n";
+    piece.state = PieceState::NOT_STARTED;
+    return false;
+  }
+
+  if (!verifyPiece(piece_index)) {
+    std::cerr << "  Piece verification failed\n";
+    return false;
+  }
+
+  if (!writePieceToDisk(piece_index)) {
+    std::cerr << "  Failed to write piece to disk\n";
+    return false;
+  }
+
+  std::cout << "  ✓ Piece " << piece_index << " complete!\n";
+  return true;
+}
+
+// bool downloadSequential();
