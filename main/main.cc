@@ -90,7 +90,7 @@ void connectToPeers(const TrackerResponse &response,
       continue;
     }
 
-    std::cout << "  ✔️ Connectiona and handshake successful!\n";
+    std::cout << "  ✔️ Connection and handshake successful!\n";
     successful++;
     connections.push_back(conn);
 

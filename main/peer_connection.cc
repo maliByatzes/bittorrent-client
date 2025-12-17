@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -103,13 +104,16 @@ void PeerConnection::disconnect() {
 
 std::vector<uint8_t> PeerConnection::buildHandshake() const {
   std::vector<uint8_t> handshake;
+  handshake.reserve(68);
 
   // protocol name length (1 byte) = 19
   handshake.push_back(19);
 
   // protocol name (19 bytes) = "BitTorrent protocol"
-  std::string protocol_name{"BitTorrent protocol"};
-  handshake.insert(handshake.end(), protocol_name.begin(), protocol_name.end());
+  const char *protocol = "BitTorrent protocol";
+  for (int i = 0; i < 19; i++) {
+    handshake.push_back(static_cast<uint8_t>(protocol[i]));
+  }
 
   // reserved bytes (8 bytes) = 0s
   for (int i = 0; i < 8; i++) {
@@ -117,11 +121,19 @@ std::vector<uint8_t> PeerConnection::buildHandshake() const {
   }
 
   // info hash (20 bytes)
-  handshake.insert(handshake.begin(), m_info_hash.begin(), m_info_hash.end());
+  for (int i = 0; i < 20; i++) {
+    handshake.push_back(m_info_hash[i]);
+  }
 
   // peer id (20 bytes)
-  handshake.insert(handshake.begin(), m_our_peer_id.begin(),
-                   m_our_peer_id.end());
+  if (m_our_peer_id.length() != 20) {
+    std::cerr << "ERROR: Peer ID length is " << m_our_peer_id.length()
+              << " but must be 20!\n";
+  }
+
+  for (int i = 0; i < 20; i++) {
+    handshake.push_back(static_cast<uint8_t>(m_our_peer_id[i]));
+  }
 
   return handshake;
 }
@@ -164,6 +176,9 @@ bool PeerConnection::performHandshake() {
   }
 
   std::vector<uint8_t> handshake{buildHandshake()};
+
+  std::cout << "  → Sending handshake (" << handshake.size() << " bytes)\n";
+
   if (!sendData(handshake.data(), handshake.size())) {
     std::cerr << "Failed to send handshake\n";
     return false;
@@ -171,9 +186,11 @@ bool PeerConnection::performHandshake() {
 
   std::cout << "  → Sent handshake\n";
 
+  std::cout << "  ← Waiting for peer handshake (68 bytes)...\n";
+
   uint8_t peer_handshake[68];
   if (!receiveData(peer_handshake, 68, 10)) {
-    std::cerr << "Failed to recieve handshake\n";
+    std::cerr << "Failed to receive handshake\n";
     return false;
   }
 
@@ -246,7 +263,7 @@ bool PeerConnection::receiveData(uint8_t *buffer, size_t length,
     int poll_result = poll(&pfd, 1, timeout_seconds * 1000);
 
     if (poll_result == 0) {
-      std::cerr << "Recieve timeout\n";
+      std::cerr << "Receive timeout\n";
       return false;
     }
 
