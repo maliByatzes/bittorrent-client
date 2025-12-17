@@ -3,6 +3,7 @@
 #include "peer_connection.h"
 #include "torrent_file.h"
 #include <cstdint>
+#include <map>
 #include <vector>
 
 enum class PieceState { NOT_STARTED, IN_PROGRESS, COMPLETE, VERIFIED };
@@ -31,6 +32,16 @@ struct PieceDownload {
   int totalBlocks() const;
 };
 
+struct DownloadTask {
+  uint32_t piece_index;
+  PeerConnection *peer;
+  bool blocks_requested;
+  bool complete;
+
+  DownloadTask(uint32_t idx, PeerConnection *p)
+      : piece_index(idx), peer(p), blocks_requested(false), complete(false) {}
+};
+
 class DownloadManager {
 private:
   TorrentMetadata m_metadata;
@@ -45,6 +56,11 @@ private:
   uint64_t m_uploaded_bytes;
 
   static const uint32_t BLOCK_SIZE;
+
+  std::map<uint32_t, PeerConnection *> m_piece_assignments;
+  static const int MAX_CONCURRENT_PIECES;
+
+  std::vector<DownloadTask> m_active_tasks;
 
 public:
   DownloadManager(const TorrentMetadata &metadata,
@@ -64,9 +80,18 @@ public:
   uint64_t getDownloadedBytes() const { return m_downloaded_bytes; }
   uint64_t getUploadedBytes() const { return m_uploaded_bytes; }
 
+  bool downloadParallel();
+  int getNextPieceToDownload();
+  bool isComplete() const;
+  std::vector<uint32_t> getAvailablePiecesForPeer(PeerConnection *peer);
+
 private:
   bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);
   bool receivePieceData(PeerConnection *peer, uint32_t piece_index);
   PeerConnection *findAvailablePeer(uint32_t piece_index);
   void createDirectoryStructure();
+
+  void processActiveTasks();
+  bool handleTaskMessage(DownloadTask &task);
+  bool startPieceDownload(uint32_t piece_index, PeerConnection *peer);
 };

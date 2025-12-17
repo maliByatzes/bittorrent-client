@@ -10,6 +10,10 @@
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+
+const uint32_t DownloadManager::BLOCK_SIZE = 16384;
+const int MAX_CONCURRENT_PIECES = 3;
 
 PieceDownload::PieceDownload(uint32_t idx, uint32_t piece_size,
                              uint32_t block_size)
@@ -49,8 +53,6 @@ int PieceDownload::blocksReceived() const {
 }
 
 int PieceDownload::totalBlocks() const { return blocks.size(); }
-
-const uint32_t DownloadManager::BLOCK_SIZE = 16384;
 
 DownloadManager::DownloadManager(const TorrentMetadata &metadata,
                                  const PieceInformation &piece_info,
@@ -481,6 +483,279 @@ bool DownloadManager::downloadSequential() {
             << std::string(60, '=') << "\n"
             << "Downloaded: " << m_downloaded_bytes << " bytes\n"
             << "Files saved to: " << m_download_dir << "\n";
+
+  return true;
+}
+
+int DownloadManager::getNextPieceToDownload() {
+  for (size_t i = 0; i < m_pieces.size(); i++) {
+    PieceDownload &piece = m_pieces[i];
+
+    if (piece.state == PieceState::VERIFIED) {
+      continue;
+    }
+
+    if (m_piece_assignments.find(i) != m_piece_assignments.end()) {
+      continue;
+    }
+
+    return i;
+  }
+
+  return -1;
+}
+
+bool DownloadManager::isComplete() const {
+  for (const auto &piece : m_pieces) {
+    if (piece.state != PieceState::VERIFIED) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<uint32_t>
+DownloadManager::getAvailablePiecesForPeer(PeerConnection *peer) {
+  std::vector<uint32_t> available_pieces;
+
+  if (!peer->isConnected() || !peer->isHandshakeComplete()) {
+    return available_pieces;
+  }
+
+  const auto &state = peer->getState();
+  if (state.peer_choking) {
+    return available_pieces;
+  }
+
+  const auto &peer_pieces = peer->getPeerPieces();
+
+  for (size_t i = 0; i < m_pieces.size(); i++) {
+    if (m_pieces[i].state == PieceState::VERIFIED) {
+      continue;
+    }
+
+    if (m_piece_assignments.find(i) != m_piece_assignments.end()) {
+      continue;
+    }
+
+    if (i < peer_pieces.size() && peer_pieces[i]) {
+      available_pieces.push_back(i);
+    }
+  }
+
+  return available_pieces;
+}
+
+bool DownloadManager::downloadParallel() {
+  std::cout << "\n"
+            << std::string(60, '=') << "\n"
+            << "STARTING PARALLEL DOWNLOAD\n"
+            << std::string(60, '=') << "\n";
+
+  if (m_peers.empty()) {
+    std::cerr << "No peers available\n";
+    return false;
+  }
+
+  std::cout << "Using " << m_peers.size() << " peer(s)\n";
+  std::cout << "Total pieces: " << m_pieces.size() << "\n\n";
+
+  createDirectoryStructure();
+
+  while (!isComplete()) {
+    for (auto *peer : m_peers) {
+      bool peer_busy = false;
+      for (const auto &task : m_active_tasks) {
+        if (task.peer == peer && !task.complete) {
+          peer_busy = true;
+          break;
+        }
+      }
+
+      if (peer_busy) {
+        continue;
+      }
+
+      auto available_pieces = getAvailablePiecesForPeer(peer);
+      if (available_pieces.empty()) {
+        continue;
+      }
+
+      uint32_t piece_index = available_pieces[0];
+      startPieceDownload(piece_index, peer);
+    }
+
+    processActiveTasks();
+
+    auto it = m_active_tasks.begin();
+    while (it != m_active_tasks.end()) {
+      if (it->complete) {
+        uint32_t piece_index = it->piece_index;
+        PieceDownload &piece = m_pieces[piece_index];
+
+        if (piece.isComplete()) {
+          piece.state = PieceState::COMPLETE;
+
+          if (verifyPiece(piece_index)) {
+            if (writePieceToDisk(piece_index)) {
+              std::cout << "  ✓ Piece " << piece_index
+                        << " verified and saved\n";
+            } else {
+              std::cerr << "  ✗ Failed to write piece " << piece_index << "\n";
+            }
+          } else {
+            std::cerr << "  ✗ Piece " << piece_index
+                      << " verification failed\n";
+            piece.state = PieceState::NOT_STARTED;
+            for (auto &block : piece.blocks) {
+              block.requested = false;
+              block.received = false;
+              block.data.clear();
+            }
+          }
+        }
+
+        m_piece_assignments.erase(piece_index);
+
+        it = m_active_tasks.erase(it);
+
+        int completed_pieces = 0;
+        for (const auto &p : m_pieces) {
+          if (p.state == PieceState::VERIFIED)
+            completed_pieces++;
+        }
+
+        std::cout << "\nProgress: " << std::fixed << std::setprecision(2)
+                  << getProgress() << "% (" << completed_pieces << "/"
+                  << m_pieces.size() << " pieces)\n";
+      } else {
+        ++it;
+      }
+    }
+
+    usleep(10000);
+  }
+
+  std::cout << "\n"
+            << std::string(60, '=') << "\n"
+            << "PARALLEL DOWNLOAD COMPLETE!\n"
+            << std::string(60, '=') << "\n"
+            << "Downloaded: " << m_downloaded_bytes << " bytes\n"
+            << "Files saved to: " << m_download_dir << "\n";
+
+  return true;
+}
+
+void DownloadManager::processActiveTasks() {
+  for (auto &task : m_active_tasks) {
+    handleTaskMessage(task);
+  }
+}
+
+bool DownloadManager::handleTaskMessage(DownloadTask &task) {
+  PeerConnection *peer = task.peer;
+  uint32_t piece_index = task.piece_index;
+  PieceDownload &piece = m_pieces[piece_index];
+
+  PeerMessage msg(MessageType::KEEP_ALIVE);
+
+  if (!peer->receiveMessage(msg, 1)) {
+    return false;
+  }
+
+  switch (msg.type) {
+  case MessageType::PIECE: {
+    if (msg.payload.size() < 8) {
+      return false;
+    }
+
+    uint32_t recv_piece_index = (static_cast<uint32_t>(msg.payload[0]) << 24) |
+                                (static_cast<uint32_t>(msg.payload[1]) << 16) |
+                                (static_cast<uint32_t>(msg.payload[2]) << 8) |
+                                static_cast<uint32_t>(msg.payload[3]);
+
+    uint32_t block_offset = (static_cast<uint32_t>(msg.payload[4]) << 24) |
+                            (static_cast<uint32_t>(msg.payload[5]) << 16) |
+                            (static_cast<uint32_t>(msg.payload[6]) << 8) |
+                            static_cast<uint32_t>(msg.payload[7]);
+
+    if (recv_piece_index != piece_index) {
+      return false;
+    }
+
+    Block *target_block = nullptr;
+    for (auto &block : piece.blocks) {
+      if (block.offset == block_offset) {
+        target_block = &block;
+        break;
+      }
+    }
+
+    if (!target_block) {
+      return false;
+    }
+
+    size_t data_length = msg.payload.size() - 8;
+    target_block->data.resize(data_length);
+    std::memcpy(target_block->data.data(), msg.payload.data() + 8, data_length);
+
+    target_block->received = true;
+    m_downloaded_bytes += data_length;
+
+    std::memcpy(piece.piece_data.data() + block_offset,
+                target_block->data.data(), data_length);
+
+    if (piece.isComplete()) {
+      std::cout << "  [Peer " << peer->getIp() << ":" << peer->getPort()
+                << "] Piece " << piece_index << " complete ("
+                << piece.blocksReceived() << "/" << piece.totalBlocks()
+                << ")\n";
+      task.complete = true;
+    }
+
+    return true;
+  }
+
+  case MessageType::CHOKE:
+    std::cerr << "  [Peer " << peer->getIp() << ":" << peer->getPort()
+              << "] Choked us during piece " << piece_index << "\n";
+    task.complete = true;
+    return false;
+
+  case MessageType::KEEP_ALIVE:
+    return false;
+
+  default:
+    return false;
+  }
+
+  return false;
+}
+
+bool DownloadManager::startPieceDownload(uint32_t piece_index,
+                                         PeerConnection *peer) {
+  if (piece_index >= m_pieces.size()) {
+    return false;
+  }
+
+  PieceDownload &piece = m_pieces[piece_index];
+
+  std::cout << "\n[Peer " << peer->getIp() << ":" << peer->getPort()
+            << "] Starting piece " << piece_index << "\n";
+
+  piece.state = PieceState::IN_PROGRESS;
+  m_piece_assignments[piece_index] = peer;
+
+  if (!requestBlocksForPiece(peer, piece_index)) {
+    std::cerr << "  Failed to send block requests\n";
+    piece.state = PieceState::NOT_STARTED;
+    m_piece_assignments.erase(piece_index);
+    return false;
+  }
+
+  DownloadTask task(piece_index, peer);
+  task.blocks_requested = true;
+  m_active_tasks.push_back(task);
 
   return true;
 }

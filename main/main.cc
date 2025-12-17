@@ -187,7 +187,8 @@ int main(int argc, char *argv[]) {
       download_mgr.addPeer(peer);
     }
 
-    bool success = download_mgr.downloadSequential();
+    // bool success = download_mgr.downloadSequential();
+    bool success = download_mgr.downloadParallel();
 
     for (auto *peer : peers) {
       peer->disconnect();
