@@ -237,9 +237,48 @@ bool DownloadManager::receivePieceData(PeerConnection *peer,
   return true;
 }
 
+bool DownloadManager::verifyPiece(uint32_t piece_index) {
+  if (piece_index >= m_pieces.size()) {
+    return false;
+  }
+
+  PieceDownload &piece = m_pieces[piece_index];
+
+  if (piece.state != PieceState::COMPLETE) {
+    std::cerr << "  Cannot verify piece " << piece_index << " - not complete\n";
+    return false;
+  }
+
+  std::cout << "  Verifying piece " << piece_index << "...\n";
+
+  const auto &expected_hash = m_piece_info.getHash(piece_index);
+
+  std::vector<uint8_t> piece_data_vec(piece.piece_data.begin(),
+                                      piece.piece_data.end());
+  std::array<uint8_t, 20> calculated_hash = sha1ToBytes(piece_data_vec);
+
+  if (calculated_hash != expected_hash) {
+    std::cerr << "  ✗ Hash mismatch for piece " << piece_index << "!\n"
+              << "    Expected: " << bytesToHex(expected_hash) << "\n"
+              << "    Got: " << bytesToHex(calculated_hash) << "\n";
+
+    piece.state = PieceState::NOT_STARTED;
+    for (auto &block : piece.blocks) {
+      block.requested = false;
+      block.received = false;
+      block.data.clear();
+    }
+
+    return false;
+  }
+
+  std::cout << "  ✓ Piece " << piece_index << " verified successfully\n";
+  piece.state = PieceState::VERIFIED;
+  return true;
+}
+
 // bool downloadSequential();
 // bool downloadPiece(uint32_t piece_index);
-// bool verifyPiece(uint32_t piece_index);
 // bool writePieceToDisk(uint32_t piece_index);
 
 // void createDirectoryStructure();
