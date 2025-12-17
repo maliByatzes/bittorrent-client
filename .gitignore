@@ -3,6 +3,7 @@ bazel-bittorrent-client
 bazel-out
 bazel-testlogs
 *.torrent
+downloads/
 
 out/
 out/coverage/*

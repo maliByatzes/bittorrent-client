@@ -44,7 +44,7 @@ private:
   uint64_t m_downloaded_bytes;
   uint64_t m_uploaded_bytes;
 
-  static const uint32_t BLOCK_SIZE = 16384;
+  static const uint32_t BLOCK_SIZE;
 
 public:
   DownloadManager(const TorrentMetadata &metadata,

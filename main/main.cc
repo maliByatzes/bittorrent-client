@@ -1,3 +1,4 @@
+#include "download_manager.h"
 #include "peer_connection.h"
 #include "torrent_file.h"
 #include "tracker.h"
@@ -9,6 +10,7 @@
 #include <iostream>
 #include <new>
 #include <string>
+#include <vector>
 
 void printUsage(const char *program_name) {
   std::cout << "Usage: " << program_name << " <torrent_file>\n";
@@ -55,18 +57,17 @@ void printTrackerResponse(const TrackerResponse &response) {
   std::cout << std::string(60, '=') << "\n";
 }
 
-void connectToPeers(const TrackerResponse &response,
-                    const std::array<uint8_t, 20> &info_hash,
-                    const std::string &peer_id, int max_peers = 3) {
+std::vector<PeerConnection *>
+connectToPeers(const TrackerResponse &response,
+               const std::array<uint8_t, 20> &info_hash,
+               const std::string &peer_id, int max_peers = 5) {
   std::cout << "\n"
             << std::string(60, '=') << "\n"
             << "CONNECTING TO PEERS\n"
             << std::string(60, '=') << "\n";
 
   int attempts = std::min(max_peers, static_cast<int>(response.peers.size()));
-  int successful = 0;
-
-  std::vector<PeerConnection *> connections;
+  std::vector<PeerConnection *> successful_peers;
 
   for (int i = 0; i < attempts; i++) {
     const auto &peer = response.peers[i];
@@ -91,16 +92,9 @@ void connectToPeers(const TrackerResponse &response,
     }
 
     std::cout << "  ✔️ Connection and handshake successful!\n";
-    successful++;
-    connections.push_back(conn);
-
-    std::cout << "  Waiting for initial message...\n";
 
     PeerMessage msg(MessageType::KEEP_ALIVE);
     if (conn->receiveMessage(msg, 5)) {
-      std::cout << "  ← Received message type: " << static_cast<int>(msg.type)
-                << "\n";
-
       if (msg.type == MessageType::BIT_FIELD) {
         const auto &pieces = conn->getPeerPieces();
         int piece_count = 0;
@@ -116,33 +110,27 @@ void connectToPeers(const TrackerResponse &response,
 
     std::cout << "  → Sending INTERESTED\n";
     if (conn->sendInterested()) {
-      std::cout << "  ✔️ INTERESTED sent\n";
-
-      std::cout << "  Waiting for UNCHOKE...\n";
       if (conn->receiveMessage(msg, 10)) {
         if (msg.type == MessageType::UNCHOKE) {
-          std::cout << "  ✔️ Peer UNCHOKED us! Ready to download.\n";
+          std::cout << "  ✔️ Peer UNCHOKED us!\n";
+          successful_peers.push_back(conn);
         } else {
-          std::cout << "  Received message type: " << static_cast<int>(msg.type)
-                    << "\n";
+          std::cout << "  Peer did not unchoke (will try anyway)\n";
+          successful_peers.push_back(conn);
         }
       } else {
-        std::cout << "  No response (peer might keep us choked)\n";
+        std::cout << "  No unchoke response (will try anyway)\n";
+        successful_peers.push_back(conn);
       }
     }
   }
 
-  std::cout << std::string(60, '=') << "\n"
-            << "SUMMARY\n"
+  std::cout << "\n"
             << std::string(60, '=') << "\n"
-            << "Attempted: " << attempts << " peers\n"
-            << "Successful: " << successful << " connections\n"
+            << "Connected to " << successful_peers.size() << " peer(s)\n"
             << std::string(60, '=') << "\n";
 
-  for (auto *conn : connections) {
-    conn->disconnect();
-    delete conn;
-  }
+  return successful_peers;
 }
 
 int main(int argc, char *argv[]) {
@@ -159,6 +147,9 @@ int main(int argc, char *argv[]) {
     torrent.parse();
 
     const auto &metadata = torrent.getMetadata();
+    const auto &piece_info = torrent.getPieceInfo();
+    const auto &file_mapping = torrent.getFileMapping();
+
     printTorrentInfo(metadata);
 
     std::string peer_id = generatePeerId();
@@ -177,13 +168,37 @@ int main(int argc, char *argv[]) {
     TrackerResponse response = tracker.announce("started");
     printTrackerResponse(response);
 
-    if (response.success && response.peers.size() > 0) {
-      std::cout << "\n✅ Successfully found peers!\n";
-      connectToPeers(response, metadata.info_hash_bytes, peer_id, 3);
-      std::cout << "\n✅ Ready for downloading!\n";
+    if (!response.success || response.peers.empty()) {
+      std::cerr << "\n❌ No peers found or tracker error\n";
+      return EXIT_FAILURE;
+    }
+
+    auto peers = connectToPeers(response, metadata.info_hash_bytes, peer_id, 5);
+
+    if (peers.empty()) {
+      std::cerr << "\n❌ Could not connect to any peers\n";
+      return EXIT_FAILURE;
+    }
+
+    DownloadManager download_mgr(metadata, piece_info, file_mapping,
+                                 "./downloads");
+
+    for (auto *peer : peers) {
+      download_mgr.addPeer(peer);
+    }
+
+    bool success = download_mgr.downloadSequential();
+
+    for (auto *peer : peers) {
+      peer->disconnect();
+      delete peer;
+    }
+
+    if (success) {
+      std::cout << "\n✅ Download complete! Check ./downloads directory\n";
       return EXIT_SUCCESS;
     } else {
-      std::cout << "\n⚠️ No peers were found or tracker error.\n";
+      std::cerr << "\n❌ Download failed\n";
       return EXIT_FAILURE;
     }
   } catch (const std::exception &e) {

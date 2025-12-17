@@ -50,6 +50,8 @@ int PieceDownload::blocksReceived() const {
 
 int PieceDownload::totalBlocks() const { return blocks.size(); }
 
+const uint32_t DownloadManager::BLOCK_SIZE = 16384;
+
 DownloadManager::DownloadManager(const TorrentMetadata &metadata,
                                  const PieceInformation &piece_info,
                                  const PieceFileMapping &file_mapping,
@@ -128,7 +130,7 @@ bool DownloadManager::requestBlocksForPiece(PeerConnection *peer,
   PieceDownload &piece = m_pieces[piece_index];
 
   std::cout << "  Requesting blocks for piece " << piece_index << " ("
-            << piece.blocks.size() << "blocks)\n";
+            << piece.blocks.size() << " blocks)\n";
 
   for (auto &block : piece.blocks) {
     if (!block.requested) {

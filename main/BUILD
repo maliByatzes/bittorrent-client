@@ -50,6 +50,17 @@ cc_library(
   ],
 )
 
+cc_library(
+  name = "download_manager",
+  srcs = ["download_manager.cc"],
+  hdrs = ["download_manager.h"],
+  deps = [
+    ":peer_connection",
+    ":torrent_file",
+    ":utils"
+  ],
+)
+
 cc_binary(
   name = "bittorrent_client",
   srcs = ["main.cc"],
@@ -57,6 +68,7 @@ cc_binary(
     ":torrent_file",
     ":tracker",
     ":utils",
-    ":peer_connection"
+    ":peer_connection",
+    ":download_manager"
   ],
 )
