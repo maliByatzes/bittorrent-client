@@ -46,20 +46,56 @@ int PieceDownload::blocksReceived() const {
 
 int PieceDownload::totalBlocks() const { return blocks.size(); }
 
-// DownloadManager::DownloadManager(const TorrentMetadata &metadata,
-//                                  const PieceInformation &piece_info,
-//                                  const PieceFileMapping &file_mapping,
-//                                  const std::string &download_dir) {}
+DownloadManager::DownloadManager(const TorrentMetadata &metadata,
+                                 const PieceInformation &piece_info,
+                                 const PieceFileMapping &file_mapping,
+                                 const std::string &download_dir)
+    : m_metadata(metadata), m_piece_info(piece_info),
+      m_file_mapping(file_mapping), m_download_dir(download_dir),
+      m_downloaded_bytes(0), m_uploaded_bytes(0) {
+  size_t num_pieces = piece_info.totalPieces();
 
-// ~DownloadManager();
+  for (size_t i = 0; i < num_pieces; i++) {
+    uint32_t piece_size;
 
-// void addPeer(PeerConnection *peer);
+    if (i == num_pieces - 1) {
+      piece_size = piece_info.last_piece_size;
+    } else {
+      piece_size = piece_info.piece_length;
+    }
+
+    m_pieces.emplace_back(i, piece_size, BLOCK_SIZE);
+  }
+
+  std::cout << "DownloadManager initialized:\n"
+            << "  Total pieces: " << num_pieces << "\n"
+            << "  Piece size: " << piece_info.piece_length << " bytes\n"
+            << "  Block size: " << BLOCK_SIZE << " bytes\n"
+            << "  Total size: " << metadata.total_size << " bytes\n";
+}
+
+DownloadManager::~DownloadManager() {
+  // Do not delete peers, they are managed externally
+}
+
+void DownloadManager::addPeer(PeerConnection *peer) {
+  if (peer && peer->isConnected() && peer->isHandshakeComplete()) {
+    m_peers.push_back(peer);
+    std::cout << "Addd peer: " << peer->getIp() << ":" << peer->getPort()
+              << "\n";
+  }
+}
+
+double DownloadManager::getProgress() const {
+  if (m_metadata.total_size == 0)
+    return 0.0;
+  return (100.0 * m_downloaded_bytes) / m_metadata.total_size;
+}
+
 // bool downloadSequential();
 // bool downloadPiece(uint32_t piece_index);
 // bool verifyPiece(uint32_t piece_index);
 // bool writePieceToDisk(uint32_t piece_index);
-
-// double getProgress() const;
 
 // bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);
 // bool receivePieceData(PeerConnection *peer, uint32_t piece_index);
