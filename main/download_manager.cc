@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -277,8 +278,101 @@ bool DownloadManager::verifyPiece(uint32_t piece_index) {
   return true;
 }
 
+bool DownloadManager::writePieceToDisk(uint32_t piece_index) {
+  if (piece_index >= m_pieces.size()) {
+    return false;
+  }
+
+  PieceDownload &piece = m_pieces[piece_index];
+
+  if (piece.state != PieceState::VERIFIED) {
+    std::cerr << "  Cannot write piece " << piece_index << " - not verified\n";
+    return false;
+  }
+
+  std::cout << "  Writing piece " << piece_index << " to disk...\n";
+
+  if (piece_index >= m_file_mapping.piece_to_file_map.size()) {
+    std::cerr << "  No file mapping for piece " << piece_index << "\n";
+    return false;
+  }
+
+  const auto &segments = m_file_mapping.piece_to_file_map[piece_index];
+
+  for (const auto &segment : segments) {
+    if (segment.file_index >= m_metadata.files.size()) {
+      std::cerr << "  Invalid file index in segment\n";
+      return false;
+    }
+
+    const auto &file_info = m_metadata.files[segment.file_index];
+
+    std::string file_path = m_download_dir;
+    for (const auto &path_component : file_info.path) {
+      file_path += "/" + path_component;
+    }
+
+    std::cout << "    Writing " << segment.segment_length << " bytes to "
+              << file_path << " at offset " << segment.file_offset << "\n";
+
+    std::fstream file(file_path,
+                      std::ios::in | std::ios::out | std::ios::binary);
+
+    if (!file.is_open()) {
+      file.open(file_path, std::ios::out | std::ios::binary);
+      if (!file.is_open()) {
+        std::cerr << "    Failed to create file: " << file_path << "\n";
+        return false;
+      }
+      file.close();
+
+      file.open(file_path, std::ios::in | std::ios::out | std::ios::binary);
+    }
+
+    if (!file.is_open()) {
+      std::cerr << "    Failed to open file: " << file_path << "\n";
+      return false;
+    }
+
+    file.seekp(segment.file_offset, std::ios::beg);
+
+    if (!file.good()) {
+      std::cerr << "    Failed to seek in file\n";
+      file.close();
+      return false;
+    }
+
+    uint64_t file_start_in_torrent = 0;
+    for (size_t i = 0; i < segment.file_index; i++) {
+      file_start_in_torrent += m_metadata.files[i].length;
+    }
+
+    uint64_t piece_start_in_torrent =
+        piece_index * static_cast<uint64_t>(m_piece_info.piece_length);
+    uint64_t segment_start_in_torrent =
+        file_start_in_torrent + segment.file_offset;
+
+    uint32_t offset_in_piece = static_cast<uint32_t>(segment_start_in_torrent -
+                                                     piece_start_in_torrent);
+
+    file.write(reinterpret_cast<const char *>(piece.piece_data.data() +
+                                              offset_in_piece),
+               segment.segment_length);
+
+    if (!file.good()) {
+      std::cerr << "    Failed to write data to file\n";
+      file.close();
+      return false;
+    }
+
+    file.close();
+  }
+
+  std::cout << "  ✓ Piece " << piece_index << " written to disk\n";
+  return true;
+}
+
 // bool downloadSequential();
 // bool downloadPiece(uint32_t piece_index);
-// bool writePieceToDisk(uint32_t piece_index);
 
 // void createDirectoryStructure();
