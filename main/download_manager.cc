@@ -1,11 +1,13 @@
 #include "download_manager.h"
 #include "peer_connection.h"
 #include "utils.h"
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
+#include <ios>
 #include <iostream>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -443,4 +445,40 @@ bool DownloadManager::downloadPiece(uint32_t piece_index) {
   return true;
 }
 
-// bool downloadSequential();
+bool DownloadManager::downloadSequential() {
+  std::cout << "\n"
+            << std::string(60, '=') << "\n"
+            << "STARTING SEQUENTIAL DOWNLOAD\n"
+            << std::string(60, '=') << "\n";
+
+  if (m_peers.empty()) {
+    std::cerr << "No peers available for download\n";
+    return false;
+  }
+
+  std::cout << "Using " << m_peers.size() << " peer(s)\n";
+  std::cout << "Total pieces to download: " << m_pieces.size() << "\n\n";
+
+  createDirectoryStructure();
+
+  for (size_t piece_index = 0; piece_index < m_pieces.size(); piece_index++) {
+    if (!downloadPiece(piece_index)) {
+      std::cerr << "\nFailed to download piece " << piece_index << "\n";
+      std::cerr << "Download incomplete!\n";
+      return false;
+    }
+
+    std::cout << "\nProgress: " << std::fixed << std::setprecision(2)
+              << getProgress() << "% (" << (piece_index + 1) << "/"
+              << m_pieces.size() << " pieces)\n";
+  }
+
+  std::cout << "\n"
+            << std::string(60, '=') << "\n"
+            << "DOWNLOAD COMPLETE!\n"
+            << std::string(60, '=') << "\n"
+            << "Downloaded: " << m_downloaded_bytes << " bytes\n"
+            << "Files saved to: " << m_download_dir << "\n";
+
+  return true;
+}
