@@ -16,8 +16,8 @@
 #include <unistd.h>
 
 const uint32_t DownloadManager::BLOCK_SIZE = 16384;
-const int MAX_CONCURRENT_PIECES = 3;
-const int RANDOM_FIRST_COUNT = 4;
+const int DownloadManager::MAX_CONCURRENT_PIECES = 3;
+const int DownloadManager::RANDOM_FIRST_COUNT = 4;
 
 PieceDownload::PieceDownload(uint32_t idx, uint32_t piece_size,
                              uint32_t block_size)

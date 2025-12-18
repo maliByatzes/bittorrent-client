@@ -188,7 +188,8 @@ int main(int argc, char *argv[]) {
     }
 
     // bool success = download_mgr.downloadSequential();
-    bool success = download_mgr.downloadParallel();
+    // bool success = download_mgr.downloadParallel();
+    bool success = download_mgr.downloadRarestFirst();
 
     for (auto *peer : peers) {
       peer->disconnect();
