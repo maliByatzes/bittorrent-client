@@ -62,6 +62,10 @@ private:
 
   std::vector<DownloadTask> m_active_tasks;
 
+  std::vector<int> m_piece_availability;
+  std::vector<uint32_t> m_random_first_pieces;
+  static const int RANDOM_FIRST_COUNT;
+
 public:
   DownloadManager(const TorrentMetadata &metadata,
                   const PieceInformation &piece_info,
@@ -85,6 +89,8 @@ public:
   bool isComplete() const;
   std::vector<uint32_t> getAvailablePiecesForPeer(PeerConnection *peer);
 
+  bool downloadRarestFirst();
+
 private:
   bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);
   bool receivePieceData(PeerConnection *peer, uint32_t piece_index);
@@ -94,4 +100,7 @@ private:
   void processActiveTasks();
   bool handleTaskMessage(DownloadTask &task);
   bool startPieceDownload(uint32_t piece_index, PeerConnection *peer);
+
+  void updatePieceAvailability();
+  int getNextRarestPiece();
 };

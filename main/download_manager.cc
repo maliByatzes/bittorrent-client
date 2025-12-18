@@ -14,6 +14,7 @@
 
 const uint32_t DownloadManager::BLOCK_SIZE = 16384;
 const int MAX_CONCURRENT_PIECES = 3;
+const int RANDOM_FIRST_COUNT = 4;
 
 PieceDownload::PieceDownload(uint32_t idx, uint32_t piece_size,
                              uint32_t block_size)
@@ -758,4 +759,30 @@ bool DownloadManager::startPieceDownload(uint32_t piece_index,
   m_active_tasks.push_back(task);
 
   return true;
+}
+
+void DownloadManager::updatePieceAvailability() {
+  m_piece_availability.clear();
+  m_piece_availability.resize(m_pieces.size(), 0);
+
+  for (auto *peer : m_peers) {
+    if (!peer->isConnected() || !peer->isHandshakeComplete()) {
+      continue;
+    }
+
+    const auto &peer_pieces = peer->getPeerPieces();
+    for (size_t i = 0;
+         i < peer_pieces.size() && i < m_piece_availability.size(); i++) {
+      if (peer_pieces[i]) {
+        m_piece_availability[i]++;
+      }
+    }
+  }
+
+  std::cout << "\nPiece availability:\n";
+  for (size_t i = 0; i < m_piece_availability.size(); i++) {
+    std::cout << "  Piece " << i << ": " << m_piece_availability[i]
+              << " peer(s)\n";
+  }
+  std::cout << "\n";
 }
