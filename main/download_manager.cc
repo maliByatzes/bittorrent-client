@@ -859,3 +859,123 @@ int DownloadManager::getNextRarestPiece() {
 
   return rarest_piece;
 }
+
+bool DownloadManager::downloadRarestFirst() {
+  std::cout << "\n"
+            << std::string(60, '=') << "\n"
+            << "STARTING RAREST-FIRST DOWNLOAD\n"
+            << std::string(60, '=') << "\n";
+
+  if (m_peers.empty()) {
+    std::cerr << "No peer available\n";
+    return false;
+  }
+
+  std::cout << "Using " << m_peers.size() << " peers(s)\n"
+            << "Total pieces: " << m_pieces.size() << "\n"
+            << "Strategy: Random first (" << RANDOM_FIRST_COUNT
+            << " pieces), then rarest-first\n\n";
+
+  createDirectoryStructure();
+  updatePieceAvailability();
+
+  while (!isComplete()) {
+    for (auto *peer : m_peers) {
+      bool peer_busy = false;
+      for (const auto &task : m_active_tasks) {
+        if (task.peer == peer && !task.complete) {
+          peer_busy = true;
+          break;
+        }
+      }
+
+      if (peer_busy) {
+        continue;
+      }
+
+      auto available_pieces = getAvailablePiecesForPeer(peer);
+      if (available_pieces.empty()) {
+        continue;
+      }
+
+      int best_piece = -1;
+      int min_availability = INT_MAX;
+
+      for (uint32_t piece_idx : available_pieces) {
+        if (m_piece_availability[piece_idx] < min_availability) {
+          min_availability = m_piece_availability[piece_idx];
+          best_piece = piece_idx;
+        }
+      }
+
+      if (best_piece < 0) {
+        best_piece = getNextRarestPiece();
+      }
+
+      if (best_piece >= 0) {
+        const auto &peer_pieces = peer->getPeerPieces();
+        if (best_piece < (int)peer_pieces.size() && peer_pieces[best_piece]) {
+          startPieceDownload(best_piece, peer);
+        }
+      }
+    }
+
+    processActiveTasks();
+
+    auto it = m_active_tasks.begin();
+    while (it != m_active_tasks.end()) {
+      if (it->complete) {
+        uint32_t piece_index = it->piece_index;
+        PieceDownload &piece = m_pieces[piece_index];
+
+        if (piece.isComplete()) {
+          piece.state = PieceState::COMPLETE;
+
+          if (verifyPiece(piece_index)) {
+            if (writePieceToDisk(piece_index)) {
+              std::cout << "  ✓ Piece " << piece_index
+                        << " verified and saved\n";
+
+              updatePieceAvailability();
+            }
+          } else {
+            std::cerr << "  ✗ Piece " << piece_index
+                      << " verification failed\n";
+            piece.state = PieceState::NOT_STARTED;
+            for (auto &block : piece.blocks) {
+              block.requested = false;
+              block.received = false;
+              block.data.clear();
+            }
+          }
+        }
+
+        m_piece_assignments.erase(piece_index);
+        it = m_active_tasks.erase(it);
+
+        int completed = 0;
+        for (const auto &p : m_pieces) {
+          if (p.state == PieceState::VERIFIED)
+            completed++;
+        }
+
+        std::cout << "\nProgress: " << std::fixed << std::setprecision(2)
+                  << getProgress() << "% (" << completed << "/"
+                  << m_pieces.size() << " pieces)\n";
+      } else {
+        ++it;
+      }
+    }
+
+    usleep(10000);
+  }
+
+  std::cout << "\n"
+            << std::string(60, '=') << "\n"
+            << "RAREST-FIRST DOWNLOAD COMPLETE!\n"
+            << std::string(60, '=') << "\n"
+            << "Downloaded: " << m_downloaded_bytes << " bytes\n"
+            << "Files save to: " << m_download_dir << "\n";
+
+  return true;
+}
