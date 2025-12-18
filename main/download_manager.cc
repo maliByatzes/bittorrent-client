@@ -1,12 +1,15 @@
 #include "download_manager.h"
 #include "peer_connection.h"
 #include "utils.h"
+#include <algorithm>
+#include <climits>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <ios>
 #include <iostream>
+#include <random>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -785,4 +788,74 @@ void DownloadManager::updatePieceAvailability() {
               << " peer(s)\n";
   }
   std::cout << "\n";
+}
+
+int DownloadManager::getNextRarestPiece() {
+  int completed_pieces = 0;
+  for (const auto &piece : m_pieces) {
+    if (piece.state == PieceState::VERIFIED) {
+      completed_pieces++;
+    }
+  }
+
+  if (completed_pieces < RANDOM_FIRST_COUNT && !m_random_first_pieces.empty()) {
+    if (m_random_first_pieces.empty()) {
+      std::vector<uint32_t> available;
+      for (size_t i = 0; i < m_pieces.size(); i++) {
+        if (m_pieces[i].state == PieceState::NOT_STARTED &&
+            m_piece_assignments.find(i) == m_piece_assignments.end() &&
+            m_piece_availability[i] > 0) {
+          available.push_back(i);
+        }
+      }
+
+      std::random_device rd;
+      std::mt19937 g(rd());
+      std::shuffle(available.begin(), available.end(), g);
+
+      int count = std::min(RANDOM_FIRST_COUNT, (int)available.size());
+      m_random_first_pieces.assign(available.begin(),
+                                   available.begin() + count);
+    }
+
+    if (!m_random_first_pieces.empty()) {
+      uint32_t piece_idx = m_random_first_pieces.back();
+      m_random_first_pieces.pop_back();
+
+      if (m_pieces[piece_idx].state == PieceState::NOT_STARTED &&
+          m_piece_assignments.find(piece_idx) == m_piece_assignments.end()) {
+        std::cout << "  [Random first] Selecting piece " << piece_idx << "\n";
+        return piece_idx;
+      }
+    }
+  }
+
+  int rarest_piece = -1;
+  int min_availability = INT_MAX;
+
+  for (size_t i = 0; i < m_pieces.size(); i++) {
+    if (m_pieces[i].state == PieceState::IN_PROGRESS) {
+      continue;
+    }
+
+    if (m_piece_assignments.find(i) != m_piece_assignments.end()) {
+      continue;
+    }
+
+    if (m_piece_availability[i] == 0) {
+      continue;
+    }
+
+    if (m_piece_availability[i] < min_availability) {
+      min_availability = m_piece_availability[i];
+      rarest_piece = i;
+    }
+  }
+
+  if (rarest_piece >= 0) {
+    std::cout << "  [Rarest first] Selecting piece " << rarest_piece
+              << " (availability: " << min_availability << ")\n";
+  }
+
+  return rarest_piece;
 }
