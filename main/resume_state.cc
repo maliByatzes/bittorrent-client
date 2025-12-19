@@ -5,6 +5,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <vector>
 
 ResumeState::ResumeState(const std::string &info_hash_hex,
@@ -86,11 +88,62 @@ bool ResumeState::load(const std::string &resume_dir) {
   return true;
 }
 
-// bool save(const std::string &resume_dir = "./.resume");
+bool ResumeState::save(const std::string &resume_dir) {
+  mkdir(resume_dir.c_str(), 0755);
 
-// void markPieceComplete(uint32_t piece_index);
-// bool isPieceComplete(uint32_t piece_index) const;
-// std::vector<uint32_t> getCompletedPieces() const;
+  m_resume_file_path = resume_dir + "/" + m_info_hash_hex + ".resume";
+
+  std::ofstream file(m_resume_file_path);
+  if (!file.is_open()) {
+    std::cerr << "Failed to create resume file: " << m_resume_file_path << "\n";
+    return false;
+  }
+
+  file << "info_hash=" << m_info_hash_hex << "\n";
+  file << "torrent_path=" << m_torrent_path << "\n";
+  file << "total_pieces=" << m_completed_pieces.size() << "\n";
+  file << "downloaded_bytes=" << m_downloaded_bytes << "\n";
+  file << "uploaded_bytes=" << m_uploaded_bytes << "\n";
+
+  file << "completed_pieces=";
+  bool first = true;
+  for (size_t i = 0; i < m_completed_pieces.size(); i++) {
+    if (m_completed_pieces[i]) {
+      if (!first)
+        file << ",";
+      file << i;
+      first = false;
+    }
+  }
+  file << "\n";
+
+  file.close();
+
+  return true;
+}
+
+void ResumeState::markPieceComplete(uint32_t piece_index) {
+  if (piece_index < m_completed_pieces.size()) {
+    m_completed_pieces[piece_index] = true;
+  }
+}
+
+bool ResumeState::isPieceComplete(uint32_t piece_index) const {
+  if (piece_index < m_completed_pieces.size()) {
+    return m_completed_pieces[piece_index];
+  }
+  return false;
+}
+
+std::vector<uint32_t> ResumeState::getCompletedPieces() const {
+  std::vector<uint32_t> completed;
+  for (size_t i = 0; i < m_completed_pieces.size(); i++) {
+    if (m_completed_pieces[i]) {
+      completed.push_back(i);
+    }
+  }
+  return completed;
+}
 
 // void setDownloadedBytes(uint64_t bytes) { m_downloaded_bytes = bytes; }
 // void setUploadedBytes(uint64_t bytes) { m_uploaded_bytes = bytes; }
@@ -98,5 +151,17 @@ bool ResumeState::load(const std::string &resume_dir) {
 // uint64_t getDownloadedBytes() const { return m_downloaded_bytes; }
 // uint64_t getUploadedBytes() const { return m_uploaded_bytes; }
 
-// double getProgress() const;
-// size_t getCompletedPieceCount() const;
+double ResumeState::getProgress() const {
+  if (m_completed_pieces.empty())
+    return 0.0;
+  return (100.0 * getCompletedPieceCount()) / m_completed_pieces.size();
+}
+
+size_t ResumeState::getCompletedPieceCount() const {
+  size_t count = 0;
+  for (bool complete : m_completed_pieces) {
+    if (complete)
+      count++;
+  }
+  return count;
+}
