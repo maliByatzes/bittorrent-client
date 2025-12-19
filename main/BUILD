@@ -51,13 +51,20 @@ cc_library(
 )
 
 cc_library(
+  name = "resume_state",
+  srcs = ["resume_state.cc"],
+  hdrs = ["resume_state.h"],
+)
+
+cc_library(
   name = "download_manager",
   srcs = ["download_manager.cc"],
   hdrs = ["download_manager.h"],
   deps = [
     ":peer_connection",
     ":torrent_file",
-    ":utils"
+    ":utils",
+    ":resume_state"
   ],
 )
 
