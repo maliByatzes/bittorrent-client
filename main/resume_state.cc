@@ -145,12 +145,6 @@ std::vector<uint32_t> ResumeState::getCompletedPieces() const {
   return completed;
 }
 
-// void setDownloadedBytes(uint64_t bytes) { m_downloaded_bytes = bytes; }
-// void setUploadedBytes(uint64_t bytes) { m_uploaded_bytes = bytes; }
-
-// uint64_t getDownloadedBytes() const { return m_downloaded_bytes; }
-// uint64_t getUploadedBytes() const { return m_uploaded_bytes; }
-
 double ResumeState::getProgress() const {
   if (m_completed_pieces.empty())
     return 0.0;

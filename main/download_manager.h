@@ -1,6 +1,7 @@
 #pragma once
 
 #include "peer_connection.h"
+#include "resume_state.h"
 #include "torrent_file.h"
 #include <cstdint>
 #include <map>
@@ -44,6 +45,10 @@ struct DownloadTask {
 
 class DownloadManager {
 private:
+  static const uint32_t BLOCK_SIZE;
+  static const int MAX_CONCURRENT_PIECES;
+  static const int RANDOM_FIRST_COUNT;
+
   TorrentMetadata m_metadata;
   PieceInformation m_piece_info;
   PieceFileMapping m_file_mapping;
@@ -55,16 +60,13 @@ private:
   uint64_t m_downloaded_bytes;
   uint64_t m_uploaded_bytes;
 
-  static const uint32_t BLOCK_SIZE;
-
   std::map<uint32_t, PeerConnection *> m_piece_assignments;
-  static const int MAX_CONCURRENT_PIECES;
-
   std::vector<DownloadTask> m_active_tasks;
-
   std::vector<int> m_piece_availability;
   std::vector<uint32_t> m_random_first_pieces;
-  static const int RANDOM_FIRST_COUNT;
+
+  ResumeState *m_resume_state;
+  bool m_use_resume;
 
 public:
   DownloadManager(const TorrentMetadata &metadata,
@@ -90,6 +92,10 @@ public:
   std::vector<uint32_t> getAvailablePiecesForPeer(PeerConnection *peer);
 
   bool downloadRarestFirst();
+
+  void setResumeEnabled(bool enabled) { m_use_resume = enabled; }
+  bool loadResumeState();
+  bool saveResumeState();
 
 private:
   bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);

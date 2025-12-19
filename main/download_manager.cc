@@ -64,7 +64,8 @@ DownloadManager::DownloadManager(const TorrentMetadata &metadata,
                                  const std::string &download_dir)
     : m_metadata(metadata), m_piece_info(piece_info),
       m_file_mapping(file_mapping), m_download_dir(download_dir),
-      m_downloaded_bytes(0), m_uploaded_bytes(0) {
+      m_downloaded_bytes(0), m_uploaded_bytes(0), m_resume_state(nullptr),
+      m_use_resume(true) {
   size_t num_pieces = piece_info.totalPieces();
 
   for (size_t i = 0; i < num_pieces; i++) {
@@ -84,10 +85,16 @@ DownloadManager::DownloadManager(const TorrentMetadata &metadata,
             << "  Piece size: " << piece_info.piece_length << " bytes\n"
             << "  Block size: " << BLOCK_SIZE << " bytes\n"
             << "  Total size: " << metadata.total_size << " bytes\n";
+
+  m_resume_state = new ResumeState(metadata.info_hash_hex, "torrent_file",
+                                   piece_info.totalPieces());
 }
 
 DownloadManager::~DownloadManager() {
   // Do not delete peers, they are managed externally
+  if (m_resume_state) {
+    delete m_resume_state;
+  }
 }
 
 void DownloadManager::addPeer(PeerConnection *peer) {
@@ -866,6 +873,8 @@ bool DownloadManager::downloadRarestFirst() {
             << "STARTING RAREST-FIRST DOWNLOAD\n"
             << std::string(60, '=') << "\n";
 
+  loadResumeState();
+
   if (m_peers.empty()) {
     std::cerr << "No peer available\n";
     return false;
@@ -936,6 +945,11 @@ bool DownloadManager::downloadRarestFirst() {
               std::cout << "  ✓ Piece " << piece_index
                         << " verified and saved\n";
 
+              if (m_resume_state) {
+                m_resume_state->markPieceComplete(piece_index);
+                saveResumeState();
+              }
+
               updatePieceAvailability();
             }
           } else {
@@ -978,4 +992,38 @@ bool DownloadManager::downloadRarestFirst() {
             << "Files save to: " << m_download_dir << "\n";
 
   return true;
+}
+
+bool DownloadManager::loadResumeState() {
+  if (!m_use_resume || !m_resume_state) {
+    return false;
+  }
+
+  if (!m_resume_state->load()) {
+    return false;
+  }
+
+  for (uint32_t piece_idx : m_resume_state->getCompletedPieces()) {
+    if (piece_idx < m_pieces.size()) {
+      m_pieces[piece_idx].state = PieceState::VERIFIED;
+    }
+  }
+
+  m_downloaded_bytes = m_resume_state->getDownloadedBytes();
+
+  std::cout << "Resumed: " << m_resume_state->getCompletedPieceCount()
+            << " pieces already complete\n\n";
+
+  return true;
+}
+
+bool DownloadManager::saveResumeState() {
+  if (!m_use_resume || !m_resume_state) {
+    return false;
+  }
+
+  m_resume_state->setDownloadedBytes(m_downloaded_bytes);
+  m_resume_state->setUploadedBytes(m_uploaded_bytes);
+
+  return m_resume_state->save();
 }
