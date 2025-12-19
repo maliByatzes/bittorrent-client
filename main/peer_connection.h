@@ -3,6 +3,7 @@
 #include "torrent_file.h"
 #include <array>
 #include <cstdint>
+#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,6 +41,15 @@ struct PeerMessage {
       : type(t), payload(std::move(p)) {}
 };
 
+struct PeerRequest {
+  uint32_t piece_index;
+  uint32_t block_offset;
+  uint32_t block_length;
+
+  PeerRequest(uint32_t idx, uint32_t off, uint32_t len)
+      : piece_index(idx), block_offset(off), block_length(len) {}
+};
+
 class PeerConnection {
 private:
   std::string m_ip;
@@ -55,6 +65,8 @@ private:
 
   bool m_connected;
   bool m_handshake_complete;
+
+  std::queue<PeerRequest> m_peer_requests;
 
 public:
   PeerConnection(const std::string &ip, uint16_t port,
@@ -91,6 +103,11 @@ public:
   const std::string &getPeerId() const { return m_peer_id; }
   std::string getIp() const { return m_ip; }
   uint16_t getPort() const { return m_port; }
+
+  size_t getPendingRequestCount() const { return m_peer_requests.size(); }
+  bool getNextRequest(PeerRequest &request);
+  void addPeerRequest(uint32_t piece_index, uint32_t block_offset,
+                      uint32_t block_length);
 
 private:
   bool sendData(const uint8_t *data, size_t length);

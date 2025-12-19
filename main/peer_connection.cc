@@ -554,9 +554,52 @@ bool PeerConnection::receiveMessage(PeerMessage &message, int timeout_seconds) {
     }
     break;
 
+  case MessageType::REQUEST: {
+    if (message.payload.size() != 12) {
+      std::cerr << "Invalid REQUEST message size\n";
+      break;
+    }
+
+    uint32_t piece_index = (static_cast<uint32_t>(message.payload[0]) << 24U) |
+                           (static_cast<uint32_t>(message.payload[1]) << 16U) |
+                           (static_cast<uint32_t>(message.payload[2]) << 8U) |
+                           static_cast<uint32_t>(message.payload[3]);
+
+    uint32_t block_offset = (static_cast<uint32_t>(message.payload[4]) << 24U) |
+                            (static_cast<uint32_t>(message.payload[5]) << 16U) |
+                            (static_cast<uint32_t>(message.payload[6]) << 8U) |
+                            static_cast<uint32_t>(message.payload[7]);
+
+    uint32_t block_length = (static_cast<uint32_t>(message.payload[8]) << 24U) |
+                            (static_cast<uint32_t>(message.payload[9]) << 16U) |
+                            (static_cast<uint32_t>(message.payload[10]) << 8U) |
+                            static_cast<uint32_t>(message.payload[11]);
+
+    addPeerRequest(piece_index, block_offset, block_length);
+
+    break;
+  }
+
   default:
     break;
   }
 
   return true;
+}
+
+// size_t getPendingRequestCount() const { return m_peer_requests.size(); }
+
+bool PeerConnection::getNextRequest(PeerRequest &request) {
+  if (m_peer_requests.empty()) {
+    return false;
+  }
+
+  request = m_peer_requests.front();
+  m_peer_requests.pop();
+  return true;
+}
+
+void PeerConnection::addPeerRequest(uint32_t piece_index, uint32_t block_offset,
+                                    uint32_t block_length) {
+  m_peer_requests.push(PeerRequest(piece_index, block_offset, block_length));
 }
