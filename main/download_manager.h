@@ -3,6 +3,7 @@
 #include "peer_connection.h"
 #include "resume_state.h"
 #include "torrent_file.h"
+#include "upload_manager.h"
 #include <cstdint>
 #include <map>
 #include <vector>
@@ -67,6 +68,8 @@ private:
 
   ResumeState *m_resume_state;
   bool m_use_resume;
+
+  UploadManager *m_upload_manager;
 
 public:
   DownloadManager(const TorrentMetadata &metadata,

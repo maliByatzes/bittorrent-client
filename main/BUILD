@@ -57,6 +57,16 @@ cc_library(
 )
 
 cc_library(
+  name = "upload_manager",
+  srcs = ["upload_manager.cc"],
+  hdrs = ["upload_manager.h"],
+  deps = [
+    ":peer_connection",
+    ":torrent_file"
+  ],
+)
+
+cc_library(
   name = "download_manager",
   srcs = ["download_manager.cc"],
   hdrs = ["download_manager.h"],
@@ -64,7 +74,8 @@ cc_library(
     ":peer_connection",
     ":torrent_file",
     ":utils",
-    ":resume_state"
+    ":resume_state",
+    ":upload_manager"
   ],
 )
 

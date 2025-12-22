@@ -65,7 +65,7 @@ DownloadManager::DownloadManager(const TorrentMetadata &metadata,
     : m_metadata(metadata), m_piece_info(piece_info),
       m_file_mapping(file_mapping), m_download_dir(download_dir),
       m_downloaded_bytes(0), m_uploaded_bytes(0), m_resume_state(nullptr),
-      m_use_resume(true) {
+      m_use_resume(true), m_upload_manager(nullptr) {
   size_t num_pieces = piece_info.totalPieces();
 
   for (size_t i = 0; i < num_pieces; i++) {
@@ -88,6 +88,9 @@ DownloadManager::DownloadManager(const TorrentMetadata &metadata,
 
   m_resume_state = new ResumeState(metadata.info_hash_hex, "torrent_file",
                                    piece_info.totalPieces());
+
+  m_upload_manager =
+      new UploadManager(download_dir, metadata, piece_info, file_mapping);
 }
 
 DownloadManager::~DownloadManager() {
@@ -95,11 +98,19 @@ DownloadManager::~DownloadManager() {
   if (m_resume_state) {
     delete m_resume_state;
   }
+  if (m_upload_manager) {
+    delete m_upload_manager;
+  }
 }
 
 void DownloadManager::addPeer(PeerConnection *peer) {
   if (peer && peer->isConnected() && peer->isHandshakeComplete()) {
     m_peers.push_back(peer);
+
+    if (m_upload_manager) {
+      m_upload_manager->addPeer(peer);
+    }
+
     std::cout << "Addd peer: " << peer->getIp() << ":" << peer->getPort()
               << "\n";
   }
@@ -930,6 +941,11 @@ bool DownloadManager::downloadRarestFirst() {
     }
 
     processActiveTasks();
+
+    if (m_upload_manager) {
+      m_upload_manager->processUploads();
+      m_uploaded_bytes = m_upload_manager->getUploadedBytes();
+    }
 
     auto it = m_active_tasks.begin();
     while (it != m_active_tasks.end()) {
