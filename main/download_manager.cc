@@ -899,6 +899,17 @@ bool DownloadManager::downloadRarestFirst() {
   createDirectoryStructure();
   updatePieceAvailability();
 
+  std::cout << "\nUnchoking interested peers...\n";
+  for (auto *peer : m_peers) {
+    const auto &state = peer->getState();
+    if (state.peer_interested) {
+      peer->sendUnchoke();
+      std::cout << "  Unchoked: " << peer->getIp() << ":" << peer->getPort()
+                << "\n";
+    }
+  }
+  std::cout << "\n";
+
   while (!isComplete()) {
     for (auto *peer : m_peers) {
       bool peer_busy = false;
@@ -992,6 +1003,9 @@ bool DownloadManager::downloadRarestFirst() {
         std::cout << "\nProgress: " << std::fixed << std::setprecision(2)
                   << getProgress() << "% (" << completed << "/"
                   << m_pieces.size() << " pieces)\n";
+
+        std::cout << "Downloaded: " << (m_downloaded_bytes / 1024.0) << " KB, "
+                  << "Uploaded: " << (m_uploaded_bytes / 1024.0) << " KB\n";
       } else {
         ++it;
       }
