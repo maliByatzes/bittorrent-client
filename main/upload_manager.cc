@@ -1,9 +1,11 @@
 #include "upload_manager.h"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <ios>
 #include <iostream>
+#include <vector>
 
 UploadManager::UploadManager(const std::string &download_dir,
                              const TorrentMetadata &metadata,
@@ -87,9 +89,67 @@ bool UploadManager::readPieceFromDisk(uint32_t piece_index,
   return true;
 }
 
-// bool readBlockFromDisk(uint32_t piece_index, uint32_t block_offset,
-//                        uint32_t block_length,
-//                        std::vector<uint8_t> &block_data);
-// void processUploads();
-// void handlePeerRequests(PeerConnection *peer);
+bool UploadManager::readBlockFromDisk(uint32_t piece_index,
+                                      uint32_t block_offset,
+                                      uint32_t block_length,
+                                      std::vector<uint8_t> &block_data) {
+  std::vector<uint8_t> piece_data;
+
+  if (!readPieceFromDisk(piece_index, piece_data)) {
+    return false;
+  }
+
+  if (block_offset + block_length > piece_data.size()) {
+    std::cerr << "Block request out of bounds\n";
+    return false;
+  }
+
+  block_data.resize(block_length);
+  std::memcpy(block_data.data(), piece_data.data() + block_offset,
+              block_length);
+
+  return true;
+}
+
+void UploadManager::processUploads() {
+  for (auto *peer : m_peers) {
+    if (!peer->isConnected() || !peer->isHandshakeComplete()) {
+      continue;
+    }
+
+    handlePeerRequests(peer);
+  }
+}
+
+void UploadManager::handlePeerRequests(PeerConnection *peer) {
+  const auto &state = peer->getState();
+
+  if (state.am_choking) {
+    return;
+  }
+
+  PeerRequest request(0, 0, 0);
+  while (peer->getNextRequest(request)) {
+    std::vector<uint8_t> block_data;
+
+    if (!readBlockFromDisk(request.piece_index, request.block_offset,
+                           request.block_length, block_data)) {
+      std::cerr << "  Failed to read block for upload\n";
+      continue;
+    }
+
+    if (peer->sendPiece(request.piece_index, request.block_offset,
+                        block_data)) {
+      m_uploaded_bytes += block_data.size();
+
+      std::cout << "  ↑ Uploaded block: piece " << request.piece_index
+                << ", offset " << request.block_offset << ", size "
+                << block_data.size() << " bytes"
+                << " to " << peer->getIp() << ":" << peer->getPort() << "\n";
+    } else {
+      std::cerr << "  Failed to send PIECE message\n";
+    }
+  }
+}
+
 // uint64_t getUploadedBytes() const { return m_uploaded_bytes; }
