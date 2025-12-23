@@ -20,6 +20,12 @@ cc_library(
 )
 
 cc_library(
+  name = "magnet_link",
+  srcs = ["magnet_link.cc"],
+  hdrs = ["magnet_link.h"],
+)
+
+cc_library(
   name = "torrent_file",
   srcs = ["torrent_file.cc"],
   hdrs = ["torrent_file.h"],
