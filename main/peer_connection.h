@@ -29,7 +29,8 @@ enum class MessageType : uint8_t {
   REQUEST = 6,
   PIECE = 7,
   CANCEL = 8,
-  KEEP_ALIVE = 255
+  KEEP_ALIVE = 255,
+  EXTENDED = 20
 };
 
 struct PeerMessage {
@@ -67,6 +68,9 @@ private:
   bool m_handshake_complete;
 
   std::queue<PeerRequest> m_peer_requests;
+
+  bool m_supports_extensions;
+  uint8_t m_ut_metadata_id;
 
 public:
   PeerConnection(const std::string &ip, uint16_t port,
@@ -108,6 +112,11 @@ public:
   bool getNextRequest(PeerRequest &request);
   void addPeerRequest(uint32_t piece_index, uint32_t block_offset,
                       uint32_t block_length);
+
+  bool supportsExtensions() const { return m_supports_extensions; }
+  bool sendExtensionHandshake();
+	bool requestMetadataPiece(uint32_t piece_index);
+	bool handExtensionMessage(const PeerMessage& msg);
 
 private:
   bool sendData(const uint8_t *data, size_t length);

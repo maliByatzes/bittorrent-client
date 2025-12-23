@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <string>
+#include <sstream>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -24,7 +25,8 @@ PeerConnection::PeerConnection(const std::string &ip, uint16_t port,
                                const std::string &our_peer_id)
     : m_ip(ip), m_port(port), m_socket(-1), m_info_hash(info_hash),
       m_our_peer_id(our_peer_id), m_connected(false),
-      m_handshake_complete(false) {}
+      m_handshake_complete(false), m_supports_extensions(false),
+      m_ut_metadata_id(0) {}
 
 PeerConnection::~PeerConnection() { disconnect(); }
 
@@ -117,7 +119,11 @@ std::vector<uint8_t> PeerConnection::buildHandshake() const {
 
   // reserved bytes (8 bytes) = 0s
   for (int i = 0; i < 8; i++) {
-    handshake.push_back(0);
+    if (i == 5) {
+      handshake.push_back(0x10);
+    } else {
+      handshake.push_back(0);
+    }
   }
 
   // info hash (20 bytes)
@@ -142,6 +148,11 @@ bool PeerConnection::parseHandshake(const uint8_t *data) {
   if (data[0] != 19) {
     std::cerr << "Invalid handshake: wrong protocol name length\n";
     return false;
+  }
+
+  if (data[25] & 0x10) {
+    m_supports_extensions = true;
+    std::cout << "  Peer supports extension protocol\n";
   }
 
   std::string protocol(reinterpret_cast<const char *>(data + 1), 19);
@@ -580,14 +591,38 @@ bool PeerConnection::receiveMessage(PeerMessage &message, int timeout_seconds) {
     break;
   }
 
+  case MessageType::EXTENDED: {
+    if (message.payload.empty()) {
+      break;
+    }
+
+    uint8_t extension_id = message.payload[0];
+
+    if (extension_id == 0) {
+      std::string handshake_data(message.payload.begin() + 1, message.payload.end());
+
+      try {
+        BNode handshake = bdecode(handshake_data);
+
+        if (handshake.isDictionary() && handshake.asDict().count("m")) {
+          const BNode& m = handshake["m"];
+          if (m.isDictionary() && m.asDict().count("ut_metadata")) {
+            m_ut_metadata_id = static_cast<uint8_t>(m["ut_metadata"].asInteger());
+            std::cout << "  Peer ut_metadata ID: " << (int)m_ut_metadata_id << "\n";
+          }
+        }
+      } catch (...) {}
+    }
+
+    break;
+  }
+
   default:
     break;
   }
 
   return true;
 }
-
-// size_t getPendingRequestCount() const { return m_peer_requests.size(); }
 
 bool PeerConnection::getNextRequest(PeerRequest &request) {
   if (m_peer_requests.empty()) {
@@ -602,4 +637,53 @@ bool PeerConnection::getNextRequest(PeerRequest &request) {
 void PeerConnection::addPeerRequest(uint32_t piece_index, uint32_t block_offset,
                                     uint32_t block_length) {
   m_peer_requests.push(PeerRequest(piece_index, block_offset, block_length));
+}
+
+bool PeerConnection::sendExtensionHandshake() {
+  if (!m_supports_extensions) {
+    return false;
+  }
+
+  std::ostringstream handshake;
+  handshake << "d"
+            << "1:m"
+            << "d"
+            << "11:ut_metadata"
+            << "i1e"
+            << "e"
+            << "e";
+
+  std::string handshake_str = handshake.str();
+
+  std::vector<uint8_t> payload;
+  payload.push_back(0);
+  payload.insert(payload.end(), handshake_str.begin(), handshake_str.end());
+
+  PeerMessage msg(MessageType::EXTENDED, payload);
+  std::vector<uint8_t> data = serializeMessage(msg);
+
+  return sendData(data.data(), data.size());
+}
+
+bool PeerConnection::requestMetadataPiece(uint32_t piece_index) {
+  if (!m_supports_extensions || m_ut_metadata_id == 0) {
+    return false;
+  }
+
+  std::ostringstream request;
+  request << "d"
+          << "8:msg_type" << "i0e"
+          << "5:piece" << "i" << piece_index << "e"
+          << "e";
+
+  std::string request_str = request.str();
+
+  std::vector<uint8_t> payload;
+  payload.push_back(m_ut_metadata_id);
+  payload.insert(payload.end(), request_str.begin(), request_str.end());
+
+  PeerMessage msg(MessageType::EXTENDED, payload);
+  std::vector<uint8_t> data = serializeMessage(msg);
+
+  return sendData(data.data(), data.size());
 }
