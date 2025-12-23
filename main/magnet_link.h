@@ -27,6 +27,6 @@ private:
   static std::string urlDecode(const std::string &str);
   static bool parseInfoHash(const std::string &xt_value,
                             std::array<uint8_t, 20> &info_hash);
-  static bool hexhToBytes(const std::string &hex,
+  static bool hexToBytes(const std::string &hex,
                           std::array<uint8_t, 20> &bytes);
 };
