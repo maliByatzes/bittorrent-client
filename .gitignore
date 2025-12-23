@@ -4,6 +4,7 @@ bazel-out
 bazel-testlogs
 *.torrent
 downloads/
+.resume/
 
 out/
 out/coverage/*

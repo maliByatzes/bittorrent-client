@@ -93,6 +93,8 @@ connectToPeers(const TrackerResponse &response,
 
     std::cout << "  ✔️ Connection and handshake successful!\n";
 
+    std::vector<bool> our_pieces;
+
     PeerMessage msg(MessageType::KEEP_ALIVE);
     if (conn->receiveMessage(msg, 5)) {
       if (msg.type == MessageType::BIT_FIELD) {
