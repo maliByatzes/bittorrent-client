@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-class MetadatFetcher {
+class MetadataFetcher {
 private:
   std::array<uint8_t, 20> m_info_hash;
   std::vector<PeerConnection*> m_peers;
@@ -23,7 +23,7 @@ private:
   bool m_metadata_complete;
 
 public:
-  MetadatFetcher(const std::array<uint8_t, 20>& info_hash);
+  MetadataFetcher(const std::array<uint8_t, 20>& info_hash);
 
   void addPeer(PeerConnection *peer);
   

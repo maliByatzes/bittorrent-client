@@ -116,7 +116,7 @@ public:
   bool supportsExtensions() const { return m_supports_extensions; }
   bool sendExtensionHandshake();
 	bool requestMetadataPiece(uint32_t piece_index);
-	bool handExtensionMessage(const PeerMessage& msg);
+	bool handleExtensionMessage(const PeerMessage& msg);
 
 private:
   bool sendData(const uint8_t *data, size_t length);
