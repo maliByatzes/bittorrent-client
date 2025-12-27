@@ -57,6 +57,18 @@ cc_library(
 )
 
 cc_library(
+  name = "metadata_fetcher",
+  srcs = ["metadata_fetcher.cc"],
+  hdrs = ["metadata_fetcher.h"],
+  deps = [
+    ":peer_connection",
+    ":torrent_file",
+    ":magnet_link",
+    ":bdecoder"
+  ],
+)
+
+cc_library(
   name = "resume_state",
   srcs = ["resume_state.cc"],
   hdrs = ["resume_state.h"],
@@ -93,6 +105,8 @@ cc_binary(
     ":tracker",
     ":utils",
     ":peer_connection",
-    ":download_manager"
+    ":download_manager",
+    ":magnet_link",
+    ":metadata_fetcher"
   ],
 )
