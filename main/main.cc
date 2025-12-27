@@ -1,4 +1,6 @@
 #include "download_manager.h"
+#include "magnet_link.h"
+#include "metadata_fetcher.h"
 #include "peer_connection.h"
 #include "torrent_file.h"
 #include "tracker.h"
@@ -13,8 +15,10 @@
 #include <vector>
 
 void printUsage(const char *program_name) {
-  std::cout << "Usage: " << program_name << " <torrent_file>\n";
-  std::cout << "\nBitTorrent Client.\n";
+  std::cout << "Usage: " << program_name << " <torrent_file_or_magnet_link>\n";
+  std::cout << "\nExamples:\n";
+  std::cout << "  " << program_name << " file.torrent\n";
+  std::cout << "  " << program_name << " 'magnet:?xt=urn:btih:...'\n";
 }
 
 void printTorrentInfo(const TorrentMetadata &metadata) {
@@ -55,6 +59,10 @@ void printTrackerResponse(const TrackerResponse &response) {
   }
 
   std::cout << std::string(60, '=') << "\n";
+}
+
+bool isMagnetLink(const std::string& input) {
+  return input.substr(0, 8) == "magnet:?";
 }
 
 std::vector<PeerConnection *>
@@ -141,70 +149,168 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  std::string torrent_file = argv[1];
+  std::string input = argv[1];
 
   try {
-    std::cout << "📁 Parsing torrent file: " << torrent_file << "\n";
-    TorrentFile torrent(torrent_file);
-    torrent.parse();
+    TorrentMetadata metadata;
+    PieceInformation piece_info;
+    PieceFileMapping file_mapping;
 
-    const auto &metadata = torrent.getMetadata();
-    const auto &piece_info = torrent.getPieceInfo();
-    const auto &file_mapping = torrent.getFileMapping();
+    if (isMagnetLink(input)) {
+      std::cout << "🧲 Processing magnet link...\n\n";
 
-    printTorrentInfo(metadata);
+      MagnetLink magnet = MagnetParser::parse(input);
 
-    std::string peer_id = generatePeerId();
-    std::cout << "🆔 Generated Peer ID: " << peer_id << "\n\n";
+      std::cout << "Info Hash: " << magnet.info_hash_hex << "\n";
+      std::cout << "Display Name: " << (magnet.display_name.empty() ? 
+                                        "(none)" : magnet.display_name) << "\n";
+      std::cout << "Trackers: " << magnet.tracker_urls.size() << "\n";
 
-    if (metadata.announce_urls.empty()) {
-      std::cerr << "❌ No announce URLs found in torrent.\n";
-      return EXIT_FAILURE;
-    }
+      if (magnet.tracker_urls.empty()) {
+        std::cerr << "❌ Magnet link has no trackers (DHT required)\n";
+        return EXIT_FAILURE;
+      }
 
-    std::cout << "📡 Contacting tracker: " << metadata.announce_urls[0] << "\n";
+      std::string peer_id = generatePeerId();
+      std::cout << "🆔 Generated Peer ID: " << peer_id << "\n\n";
 
-    Tracker tracker(metadata.announce_urls[0], metadata.info_hash_bytes,
-                    peer_id, 6881, metadata.total_size);
+      std::cout << "📡 Contacting tracker: " << magnet.tracker_urls[0] << "\n";
 
-    TrackerResponse response = tracker.announce("started");
-    printTrackerResponse(response);
+      Tracker tracker(magnet.tracker_urls[0],
+                      magnet.info_hash,
+                      peer_id,
+                      6881,
+                      magnet.has_exact_length ? magnet.exact_length : 0);
 
-    if (!response.success || response.peers.empty()) {
-      std::cerr << "\n❌ No peers found or tracker error\n";
-      return EXIT_FAILURE;
-    }
+      TrackerResponse response = tracker.announce("started");
 
-    auto peers = connectToPeers(response, metadata.info_hash_bytes, peer_id, 5);
+      if (!response.success || response.peers.empty()) {
+        std::cerr << "\n❌ No peers found or tracker error\n";
+        return EXIT_FAILURE;
+      }
 
-    if (peers.empty()) {
-      std::cerr << "\n❌ Could not connect to any peers\n";
-      return EXIT_FAILURE;
-    }
+      std::cout << "✅ Found " << response.peers.size() << " peer(s)\n\n";
 
-    DownloadManager download_mgr(metadata, piece_info, file_mapping,
-                                 "./downloads");
+      auto peers = connectToPeers(response, magnet.info_hash, peer_id, 5);
 
-    for (auto *peer : peers) {
-      download_mgr.addPeer(peer);
-    }
+      if (peers.empty()) {
+        std::cerr << "\n❌ Could not connect to any peers\n";
+        return EXIT_FAILURE;
+      }
 
-    // bool success = download_mgr.downloadSequential();
-    // bool success = download_mgr.downloadParallel();
-    bool success = download_mgr.downloadRarestFirst();
+      MetadataFetcher fetcher(magnet.info_hash);
+      for (auto* peer : peers) {
+        fetcher.addPeer(peer);
+      }
 
-    for (auto *peer : peers) {
-      peer->disconnect();
-      delete peer;
-    }
+      if (!fetcher.fetchMetadata()) {
+        std::cerr << "❌ Failed to fetch metadata\n";
+        for (auto* peer : peers) {
+          peer->disconnect();
+          delete peer;
+        }
+        return EXIT_FAILURE;
+      }
 
-    if (success) {
-      std::cout << "\n✅ Download complete! Check ./downloads directory\n";
-      return EXIT_SUCCESS;
+      if (!fetcher.reconstructMetadata(metadata, piece_info, file_mapping)) {
+        std::cerr << "❌ Failed to reconstruct metadata\n";
+        for (auto* peer : peers) {
+          peer->disconnect();
+          delete peer;
+        }
+        return EXIT_FAILURE;
+      }
+
+      metadata.announce_urls = magnet.tracker_urls;
+
+      std::cout << "\n✅ Metadata reconstructed successfully!\n";
+      printTorrentInfo(metadata);
+
+      DownloadManager download_mgr(metadata, piece_info, file_mapping, "./downloads");
+      
+      for (auto* peer : peers) {
+        download_mgr.addPeer(peer);
+      }
+      
+      std::cout << "\n📥 Starting download...\n";
+      bool success = download_mgr.downloadRarestFirst();
+      
+      for (auto* peer : peers) {
+        peer->disconnect();
+        delete peer;
+      }
+      
+      if (success) {
+        std::cout << "\n✅ Download complete!\n";
+        return EXIT_SUCCESS;
+      } else {
+        std::cerr << "\n❌ Download failed\n";
+        return EXIT_SUCCESS;
+      }
     } else {
-      std::cerr << "\n❌ Download failed\n";
-      return EXIT_FAILURE;
+        std::cout << "📁 Parsing torrent file: " << input << "\n";
+        TorrentFile torrent(input);
+        torrent.parse();
+
+        metadata = torrent.getMetadata();
+        piece_info = torrent.getPieceInfo();
+        file_mapping = torrent.getFileMapping();
+
+        printTorrentInfo(metadata);
+
+        std::string peer_id = generatePeerId();
+        std::cout << "🆔 Generated Peer ID: " << peer_id << "\n\n";
+
+        if (metadata.announce_urls.empty()) {
+          std::cerr << "❌ No announce URLs found in torrent.\n";
+          return EXIT_FAILURE;
+        }
+
+        std::cout << "📡 Contacting tracker: " << metadata.announce_urls[0] << "\n";
+
+        Tracker tracker(metadata.announce_urls[0], metadata.info_hash_bytes,
+                        peer_id, 6881, metadata.total_size);
+
+        TrackerResponse response = tracker.announce("started");
+        printTrackerResponse(response);
+
+        if (!response.success || response.peers.empty()) {
+          std::cerr << "\n❌ No peers found or tracker error\n";
+          return EXIT_FAILURE;
+        }
+
+        auto peers = connectToPeers(response, metadata.info_hash_bytes, peer_id, 5);
+
+        if (peers.empty()) {
+          std::cerr << "\n❌ Could not connect to any peers\n";
+          return EXIT_FAILURE;
+        }
+
+        DownloadManager download_mgr(metadata, piece_info, file_mapping,
+                                    "./downloads");
+
+        for (auto *peer : peers) {
+          download_mgr.addPeer(peer);
+        }
+
+        // bool success = download_mgr.downloadSequential();
+        // bool success = download_mgr.downloadParallel();
+        bool success = download_mgr.downloadRarestFirst();
+
+        for (auto *peer : peers) {
+          peer->disconnect();
+          delete peer;
+        }
+
+        if (success) {
+          std::cout << "\n✅ Download complete! Check ./downloads directory\n";
+          return EXIT_SUCCESS;
+        } else {
+          std::cerr << "\n❌ Download failed\n";
+          return EXIT_FAILURE;
+        }
     }
+
   } catch (const std::exception &e) {
     std::cerr << "\n❌ Error: " << e.what() << "\n";
     return EXIT_FAILURE;
