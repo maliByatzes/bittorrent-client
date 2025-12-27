@@ -229,3 +229,128 @@ bool MetadataFetcher::verifyMetadata(const std::vector<uint8_t>& full_metadata) 
   std::cout << "✓ Metadata verified (hash matches)\n";
   return true;
 }
+
+bool MetadataFetcher::reconstructMetadata(TorrentMetadata& metadata,
+                         PieceInformation& piece_info,
+                         PieceFileMapping& file_mapping)
+{
+  if (!m_metadata_complete) {
+    return false;
+  }
+
+  std::vector<uint8_t> full_metadata;
+  for (const auto& piece : m_metadata_pieces) {
+    full_metadata.insert(full_metadata.end(), piece.begin(), piece.end());
+  }
+
+  if (full_metadata.size() > m_total_metadata_size) {
+    full_metadata.resize(m_total_metadata_size);
+  }
+
+  try
+  {
+    std::string metadata_str(full_metadata.begin(), full_metadata.end());
+    BNode info = bdecode(metadata_str);
+
+    if (!info.isDictionary()) {
+      std::cerr << "Metadata is not a valid dictionary\n";
+      return false;
+    }
+
+    metadata.info_hash_bytes = m_info_hash;
+    metadata.info_hash_hex = bytesToHex(m_info_hash);
+    metadata.info_hash_urlencoded = bytesToURLEncoded(m_info_hash);
+
+    metadata.piece_length = static_cast<uint32_t>(info["piece length"].asInteger());
+
+    metadata.name = info["name"].asString();
+
+    metadata.total_size = 0;
+
+    if (info.asDict().count("files")) {
+      const auto& files_list = info["files"].asList();
+      for (const auto& file_node : files_list) {
+        FileInfo file_info;
+        file_info.length = static_cast<uint64_t>(file_node["length"].asInteger());
+
+        const auto& path_list = file_node["path"].asList();
+        for (const auto& path_component : path_list) {
+          file_info.path.push_back(path_component.asString());
+        }
+
+        metadata.files.push_back(file_info);
+        metadata.total_size += file_info.length;
+      }
+    } else {
+      FileInfo file_info;
+      file_info.length = static_cast<uint64_t>(info["length"].asInteger());
+      file_info.path.push_back(metadata.name);
+
+      metadata.files.push_back(file_info);
+      metadata.total_size = file_info.length;
+    }
+
+    const std::string& pieces_string = info["pieces"].asString();
+    size_t num_pieces = pieces_string.length() / 20;
+
+    piece_info.piece_length = metadata.piece_length;
+    piece_info.hashes.clear();
+
+    for (size_t i = 0; i < num_pieces; i++) {
+      std::array<uint8_t, 20> hash;
+      for (size_t j = 0; j < 20; j++) {
+        hash[j] = static_cast<uint8_t>(pieces_string[i * 20 + j]);
+      }
+      piece_info.hashes.push_back(hash);
+    }
+
+    uint64_t last_piece_size = metadata.total_size % metadata.piece_length;
+    if (last_piece_size == 0) {
+      piece_info.last_piece_size = metadata.piece_length;
+    } else {
+      piece_info.last_piece_size = static_cast<uint32_t>(last_piece_size);
+    }
+
+    file_mapping.piece_to_file_map.resize(num_pieces);
+
+    for (size_t piece_idx = 0; piece_idx < num_pieces; piece_idx++) {
+      uint64_t piece_start = piece_idx * static_cast<uint64_t>(metadata.piece_length);
+
+      uint32_t piece_size;
+      if (piece_idx == num_pieces - 1) {
+        piece_size = piece_info.last_piece_size;
+      } else {
+        piece_size = metadata.piece_length;
+      }
+
+      uint64_t piece_end = piece_start + piece_size;
+      uint64_t file_start_byte = 0;
+
+      for (size_t file_idx = 0; file_idx < metadata.files.size(); file_idx++) {
+        uint64_t file_end_byte = file_start_byte + metadata.files[file_idx].length;
+
+        if (file_end_byte > piece_start && file_start_byte < piece_end) {
+          PieceFileSegment segment;
+          segment.file_index = file_idx;
+
+          uint64_t overlap_start = std::max(piece_start, file_start_byte);
+          uint64_t overlap_end = std::min(piece_end, file_end_byte);
+
+          segment.file_offset = overlap_start - file_start_byte;
+          segment.segment_length = static_cast<uint32_t>(overlap_end - overlap_start);
+
+          file_mapping.piece_to_file_map[piece_idx].push_back(segment);
+        }
+
+        file_start_byte = file_end_byte;
+      }
+    }
+
+    return true;
+  }
+  catch(const std::exception& e)
+  {
+    std::cerr << "Failed to reconstruct metadata: " << e.what() << '\n';
+    return false;
+  }
+}
