@@ -687,3 +687,32 @@ bool PeerConnection::requestMetadataPiece(uint32_t piece_index) {
 
   return sendData(data.data(), data.size());
 }
+
+bool PeerConnection::handleExtensionMessage(const PeerMessage& msg) {
+  if (msg.payload.empty()) { return false; }
+
+  uint8_t extension_id = msg.payload[0];
+
+  if (extension_id == 0) {
+    std::string handshake_data(msg.payload.begin() + 1, msg.payload.end());
+
+    try
+    {
+      BNode handshake = bdecode(handshake_data);
+
+      if (handshake.isDictionary() && handshake.asDict().count("m")) {
+        const BNode& m = handshake["m"];
+        if (m.isDictionary() && m.asDict().count("ut_metadata")) {
+          m_ut_metadata_id = static_cast<uint8_t>(m["ut_metadata"].asInteger());
+          return true;
+        }
+      }
+    }
+    catch(...)
+    {
+      return false;
+    }
+  }
+
+  return false;
+}
