@@ -68,13 +68,14 @@ bool isMagnetLink(const std::string& input) {
 std::vector<PeerConnection *>
 connectToPeers(const TrackerResponse &response,
                const std::array<uint8_t, 20> &info_hash,
-               const std::string &peer_id, int max_peers = 5) {
+               const std::string &peer_id, [[maybe_unused]] int max_peers = 5) {
   std::cout << "\n"
             << std::string(60, '=') << "\n"
             << "CONNECTING TO PEERS\n"
             << std::string(60, '=') << "\n";
 
-  int attempts = std::max(max_peers, static_cast<int>(response.peers.size()));
+  // int attempts = std::max(max_peers, static_cast<int>(response.peers.size()));
+  int attempts = static_cast<int>(response.peers.size());
   std::vector<PeerConnection *> successful_peers;
 
   for (int i = 0; i < attempts; i++) {
