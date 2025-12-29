@@ -74,7 +74,7 @@ connectToPeers(const TrackerResponse &response,
             << "CONNECTING TO PEERS\n"
             << std::string(60, '=') << "\n";
 
-  int attempts = std::min(max_peers, static_cast<int>(response.peers.size()));
+  int attempts = std::max(max_peers, static_cast<int>(response.peers.size()));
   std::vector<PeerConnection *> successful_peers;
 
   for (int i = 0; i < attempts; i++) {

@@ -899,6 +899,7 @@ bool DownloadManager::downloadRarestFirst() {
   createDirectoryStructure();
   updatePieceAvailability();
 
+  /*
   std::cout << "\nUnchoking interested peers...\n";
   for (auto *peer : m_peers) {
     const auto &state = peer->getState();
@@ -907,6 +908,24 @@ bool DownloadManager::downloadRarestFirst() {
       std::cout << "  Unchoked: " << peer->getIp() << ":" << peer->getPort()
                 << "\n";
     }
+  }
+  std::cout << "\n";*/
+
+  std::cout << "\nReady to download. Peer states:\n";
+  for (auto* peer : m_peers) {
+    const auto& state = peer->getState();
+    std::cout << "  " << peer->getIp() << ":" << peer->getPort();
+    
+    if (!state.peer_choking) {
+      std::cout << " - ✓ Unchoked (ready)";
+    } else {
+      std::cout << " - ⏳ Choked (waiting)";
+    }
+    
+    if (state.am_interested) {
+      std::cout << " | We're interested";
+    }
+    std::cout << "\n";
   }
   std::cout << "\n";
 
