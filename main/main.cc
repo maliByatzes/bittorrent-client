@@ -5,6 +5,9 @@
 #include "torrent_file.h"
 #include "tracker.h"
 #include "utils.h"
+#include "tui/tui_app.h"
+#include "tui/tui_state.h"
+#include <thread>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -287,8 +290,28 @@ int main(int argc, char *argv[]) {
           return EXIT_FAILURE;
         }
 
+        auto tui_state = std::make_shared<TUIState>();
+
+        std::thread tui_thread;
+        TUIApp* tui_app = nullptr;
+
+        bool use_tui = true;
+
+        if (use_tui) {
+          tui_app = new TUIApp(tui_state);
+          tui_thread = std::thread([tui_app]() {
+            tui_app->run();
+          });
+
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
         DownloadManager download_mgr(metadata, piece_info, file_mapping,
                                     "./downloads");
+
+        if (use_tui) {
+          download_mgr.setTUIState(tui_state);
+        }
 
         for (auto *peer : peers) {
           download_mgr.addPeer(peer);
@@ -301,6 +324,14 @@ int main(int argc, char *argv[]) {
         for (auto *peer : peers) {
           peer->disconnect();
           delete peer;
+        }
+
+        if (use_tui) {
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+
+          tui_app->stop();
+          tui_thread.join();
+          delete tui_app;
         }
 
         if (success) {

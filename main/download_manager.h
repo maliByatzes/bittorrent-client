@@ -4,8 +4,10 @@
 #include "resume_state.h"
 #include "torrent_file.h"
 #include "upload_manager.h"
+#include "tui/tui_state.h"
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <vector>
 
 enum class PieceState { NOT_STARTED, IN_PROGRESS, COMPLETE, VERIFIED };
@@ -71,6 +73,8 @@ private:
 
   UploadManager *m_upload_manager;
 
+  std::shared_ptr<TUIState> m_tui_state;
+
 public:
   DownloadManager(const TorrentMetadata &metadata,
                   const PieceInformation &piece_info,
@@ -99,6 +103,10 @@ public:
   void setResumeEnabled(bool enabled) { m_use_resume = enabled; }
   bool loadResumeState();
   bool saveResumeState();
+
+  void setTUIState(std::shared_ptr<TUIState> state) {
+    m_tui_state = state;
+  }
 
 private:
   bool requestBlocksForPiece(PeerConnection *peer, uint32_t piece_index);

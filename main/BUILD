@@ -11,6 +11,22 @@ cc_library(
 )
 
 cc_library(
+  name = "tui_state",
+  srcs = ["tui/tui_state.cc"],
+  hdrs = ["tui/tui_state.h"],
+)
+
+cc_library(
+  name = "tui_app",
+  srcs = ["tui/tui_app.cc"],
+  hdrs = ["tui/tui_app.h"],
+  deps = [
+    ":tui_state",
+    ":ftxui",
+  ]
+)
+
+cc_library(
   name = "utils",
   srcs = ["utils.cc"],
   hdrs = ["utils.h"],
@@ -102,7 +118,8 @@ cc_library(
     ":torrent_file",
     ":utils",
     ":resume_state",
-    ":upload_manager"
+    ":upload_manager",
+    ":tui_state"
   ],
 )
 
@@ -117,6 +134,8 @@ cc_binary(
     ":download_manager",
     ":magnet_link",
     ":metadata_fetcher",
-    ":ftxui"
+    ":tui_state",
+    ":tui_app",
+    ":ftxui",
   ],
 )
