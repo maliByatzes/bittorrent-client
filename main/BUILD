@@ -2,6 +2,15 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
+  name = "ftxui",
+  linkopts = [
+    "-lftxui-component",
+    "-lftxui-dom",
+    "-lftxui-screen",
+  ],
+)
+
+cc_library(
   name = "utils",
   srcs = ["utils.cc"],
   hdrs = ["utils.h"],
@@ -107,6 +116,7 @@ cc_binary(
     ":peer_connection",
     ":download_manager",
     ":magnet_link",
-    ":metadata_fetcher"
+    ":metadata_fetcher",
+    ":ftxui"
   ],
 )
