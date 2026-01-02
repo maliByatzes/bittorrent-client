@@ -65,7 +65,7 @@ DownloadManager::DownloadManager(const TorrentMetadata &metadata,
     : m_metadata(metadata), m_piece_info(piece_info),
       m_file_mapping(file_mapping), m_download_dir(download_dir),
       m_downloaded_bytes(0), m_uploaded_bytes(0), m_resume_state(nullptr),
-      m_use_resume(true), m_upload_manager(nullptr), m_tui_state(nullptr) {
+      m_use_resume(true), m_upload_manager(nullptr) {
   size_t num_pieces = piece_info.totalPieces();
 
   for (size_t i = 0; i < num_pieces; i++) {
@@ -884,14 +884,7 @@ bool DownloadManager::downloadRarestFirst() {
             << "STARTING RAREST-FIRST DOWNLOAD\n"
             << std::string(60, '=') << "\n";
 
-  bool resumed = loadResumeState();
-
-  if (m_tui_state) {
-    m_tui_state->setFilename(m_metadata.name);
-    m_tui_state->setTotalSize(m_metadata.total_size);
-    m_tui_state->setStatus("Downloading");
-    m_tui_state->setPieceInfo(m_pieces.size(), 0);
-  }
+  loadResumeState();
 
   if (m_peers.empty()) {
     std::cerr << "No peer available\n";
@@ -1032,14 +1025,6 @@ bool DownloadManager::downloadRarestFirst() {
 
         std::cout << "Downloaded: " << (m_downloaded_bytes / 1024.0) << " KB, "
                   << "Uploaded: " << (m_uploaded_bytes / 1024.0) << " KB\n";
-
-        if (m_tui_state) {
-          m_tui_state->setProgress(getProgress());
-          m_tui_state->setDownloadedBytes(m_downloaded_bytes);
-          m_tui_state->setUploadedBytes(m_uploaded_bytes);
-          m_tui_state->setPeerCount(m_peers.size());
-          m_tui_state->setPieceInfo(m_pieces.size(), completed);
-        }
       } else {
         ++it;
       }
@@ -1054,11 +1039,6 @@ bool DownloadManager::downloadRarestFirst() {
             << std::string(60, '=') << "\n"
             << "Downloaded: " << m_downloaded_bytes << " bytes\n"
             << "Files save to: " << m_download_dir << "\n";
-  
-  if (m_tui_state) {
-    m_tui_state->setStatus("Complete");
-    m_tui_state->setProgress(100.0);
-  }
 
   return true;
 }

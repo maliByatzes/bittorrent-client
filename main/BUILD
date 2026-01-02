@@ -2,31 +2,6 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
-  name = "ftxui",
-  linkopts = [
-    "-lftxui-component",
-    "-lftxui-dom",
-    "-lftxui-screen",
-  ],
-)
-
-cc_library(
-  name = "tui_state",
-  srcs = ["tui/tui_state.cc"],
-  hdrs = ["tui/tui_state.h"],
-)
-
-cc_library(
-  name = "tui_app",
-  srcs = ["tui/tui_app.cc"],
-  hdrs = ["tui/tui_app.h"],
-  deps = [
-    ":tui_state",
-    ":ftxui",
-  ]
-)
-
-cc_library(
   name = "utils",
   srcs = ["utils.cc"],
   hdrs = ["utils.h"],
@@ -119,7 +94,6 @@ cc_library(
     ":utils",
     ":resume_state",
     ":upload_manager",
-    ":tui_state"
   ],
 )
 
@@ -134,8 +108,5 @@ cc_binary(
     ":download_manager",
     ":magnet_link",
     ":metadata_fetcher",
-    ":tui_state",
-    ":tui_app",
-    ":ftxui",
   ],
 )
