@@ -3,7 +3,7 @@ bazel-bittorrent-client
 bazel-out
 bazel-testlogs
 *.torrent
-downloads/
+.downloads/
 .resume/
 
 out/
